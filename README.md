@@ -36,13 +36,13 @@ If mouse-look does not work on a laptop, open **Graphics & Controls → Looking 
 
 ## Teacher ON/OFF switch (new)
 - `teacher.html` = the teacher control page (secret PIN + big TURN ON / TURN OFF buttons + a message for students).
-- `Code.gs` = the small Google Apps Script that keeps the switch. Safe by default: CLOSED until you turn it ON; wrong PIN 5 times locks the PIN for 5 minutes.
-- In `config.js`, `ES.GATE.url` is empty at first, so the game is always open while you test. After setup, paste the Apps Script web app URL there.
+- `apps-script/Code.gs` = the small Google Apps Script that keeps the switch. Safe by default: CLOSED until you turn it ON; wrong PIN 5 times locks the PIN for 5 minutes.
+- In `js/config.js`, `ES.GATE.url` is empty at first, so the game is always open while you test. After setup, paste the Apps Script web app URL there.
 - When the switch is OFF, students see a closed screen with your message and a running match stops (within about a minute). They come back in by themselves when you turn it ON.
 
 ## Coming next (not built yet)
 Stage 2: load questions from a Google Sheet + simple results export · Stage 3: live multiplayer (teacher's browser as the game host) · Stage 4: dashboard / accounts only if really needed.
 
 ## Files
-All files are in one flat folder: index.html, teacher.html, style.css, config/questions/quiz/world/bots/game/gate/audio/main/teacher .js, Code.gs (the Google Apps Script), and three.min.js (Three.js r160, MIT licence).
-To change the sample questions, edit `js/questions.js`. To change bot strength or speed, edit `config.js`.
+`index.html`, `style.css`, `js/` (config, questions, quiz, world, bots, game, audio, main) and `js/vendor/three.min.js` (Three.js r160, MIT licence).
+To change the sample questions, edit `js/questions.js`. To change bot strength or speed, edit `js/config.js`.

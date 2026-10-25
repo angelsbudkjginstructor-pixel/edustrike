@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="style.css">
 <style>
   html, body { overflow: auto; height: auto; min-height: 100%; background: radial-gradient(1000px 600px at 50% -10%, #2a5db8 0%, #14305f 50%, #0b1730 100%) fixed; }
-  .t-wrap { max-width: 460px; margin: 0 auto; padding: 22px 16px 40px; text-align: center; }
+  .t-wrap { max-width: 760px; margin: 0 auto; padding: 22px 16px 40px; text-align: center; }
   .t-card { background: #fff; color: #12203a; border-radius: 22px; padding: 22px; box-shadow: 0 16px 50px rgba(0,0,0,.5); text-align: left; }
   .t-status { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 26px; font-weight: 900; padding: 12px; border-radius: 16px; background: #eef3fb; }
   .t-status .dot { width: 18px; height: 18px; border-radius: 50%; background: #9aa8c2; }
@@ -24,6 +24,30 @@
   .t-msg.good { color: #0d6b34; } .t-msg.bad { color: #b3261e; }
   .t-small { margin-top: 12px; font-size: 13px; color: #5a6a88; font-weight: 600; text-align: center; }
   .t-nourl { background: #fff0ee; color: #8a1a0b; padding: 12px; border-radius: 12px; font-weight: 700; }
+  .t-card + .t-card { margin-top: 18px; }
+  .t-card h2 { margin: 0 0 6px; font-size: 24px; }
+  .t-sub { color: #5a6a88; font-weight: 600; margin: 0 0 8px; }
+  .t-open { width: 100%; font-size: 22px; padding: 18px; }
+  .r-code { text-align: center; margin: 6px 0; }
+  .r-code .big { font: 900 76px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 14px; padding-left: 14px; color: #2f86ff; user-select: text; -webkit-user-select: text; }
+  .r-link { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; }
+  .r-link input { flex: 1; font-size: 15px !important; padding: 8px 10px !important; }
+  .r-link .btn { padding: 9px 14px; font-size: 15px; box-shadow: 0 3px 0 #b97d00; }
+  .r-teams { display: flex; gap: 12px; margin-top: 12px; }
+  .r-col { flex: 1; min-width: 0; background: #f4f7fd; border-radius: 14px; overflow: hidden; min-height: 70px; }
+  .r-col h3 { margin: 0; padding: 8px 12px; color: #fff; font-size: 17px; }
+  .r-row { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid #e4ebf7; font-weight: 700; }
+  .r-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r-row .mini { font: inherit; font-size: 13px; font-weight: 800; border: 2px solid #c9d7ee; background: #fff; color: #12203a; border-radius: 8px; padding: 3px 8px; cursor: pointer; }
+  .r-row .mini:hover { background: #eef3fb; }
+  .r-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .r-tools .btn { font-size: 15px; padding: 9px 14px; box-shadow: 0 3px 0 #b97d00; }
+  .r-tools .btn.dark { background: #e8eef9; color: #12203a; box-shadow: 0 3px 0 #b9c8e2; }
+  .r-tools .btn.red { background: linear-gradient(#ff9a8d, #e0301e); color: #fff; box-shadow: 0 3px 0 #9a1d10; }
+  .r-say { display: flex; gap: 8px; margin-top: 12px; }
+  .r-say input { flex: 1; }
+  .r-note { margin-top: 12px; font-size: 14px; font-weight: 600; color: #5a6a88; background: #f4f7fd; border-radius: 10px; padding: 10px 12px; }
+  @media (max-width: 620px) { .r-teams { flex-direction: column; } .r-code .big { font-size: 54px; letter-spacing: 8px; } }
 </style>
 </head>
 <body>
@@ -49,10 +73,42 @@
     <div id="t-msg" class="t-msg"></div>
     <div class="t-small">Students' games check this switch about once a minute. Turning OFF stops a game that is already running.</div>
   </div>
+
+  <div class="t-card" id="room-card">
+    <h2>👥 Class room</h2>
+    <p class="t-sub">Students join with a code and pick Blue or Red. You can move anyone.</p>
+
+    <div id="r-closed">
+      <button id="r-open" class="btn t-open" type="button">🚪 OPEN CLASS ROOM</button>
+      <div id="r-err" class="t-msg bad"></div>
+    </div>
+
+    <div id="r-opened" class="hidden">
+      <div class="r-code"><div class="big" id="r-code">-----</div></div>
+      <div class="r-link"><input id="r-link" type="text" readonly><button id="r-copy" class="btn" type="button">📋 Copy link</button></div>
+      <div class="t-small" style="text-align:left">Students open the link (or type the code on the "JOIN CLASS GAME" button).</div>
+
+      <div class="r-teams"><div class="r-col" id="r-team0"></div><div class="r-col" id="r-team1"></div></div>
+      <div class="t-small" id="r-count" style="text-align:left"></div>
+
+      <div class="r-tools">
+        <button id="r-mix" class="btn dark" type="button">🔀 Mix teams</button>
+        <label style="margin:0;font-weight:800;display:flex;align-items:center;gap:6px"><input id="r-lock" type="checkbox" style="width:20px;height:20px"> 🔒 Lock teams</label>
+        <span style="flex:1"></span>
+        <button id="r-close" class="btn red" type="button">Close room</button>
+      </div>
+      <div class="r-say"><input id="r-say" type="text" maxlength="120" placeholder="Send a message to every student's screen"><button id="r-send" class="btn dark" type="button" style="padding:9px 14px">📣 Send</button></div>
+      <div class="r-note">🧪 <b>Connection test:</b> each student shows a dot — 🟢 fast, 🟡 ok, 🔴 slow, ⚪ checking. The ▶ START MATCH button is coming in the next update.</div>
+    </div>
+  </div>
 </div>
 
 <script src="config.js"></script>
+<script src="peerjs.min.js"></script>
 <script src="gate.js"></script>
+<script src="net.js"></script>
+<script src="room.js"></script>
 <script src="teacher.js"></script>
+<script src="teacher-room.js"></script>
 </body>
 </html>

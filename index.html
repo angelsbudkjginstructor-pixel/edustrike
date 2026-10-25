@@ -20,6 +20,41 @@
   </div>
 </div>
 
+<!-- ======================= CLASS ROOM (student) ======================= -->
+<div id="screen-room" class="screen hidden">
+  <div class="gate-wrap">
+    <div class="card roomcard">
+      <div class="logo small">EDU<span>STRIKE</span></div>
+      <h2>👥 Class Game</h2>
+
+      <div id="room-form">
+        <p class="big">Type the code your teacher shows on the board.</p>
+        <input id="room-code-in" class="codein" type="text" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE">
+        <label class="rlabel">Your name
+          <input id="room-name-in" type="text" maxlength="12" autocomplete="off" placeholder="Your name">
+        </label>
+        <button id="room-join" class="btn big" type="button">▶ JOIN</button>
+        <button id="room-back" class="btn small ghost" type="button">Back to menu</button>
+      </div>
+
+      <div id="room-wait" class="hidden">
+        <div class="codebadge">Room <b id="room-code"></b> &nbsp;·&nbsp; You are <b id="room-me"></b></div>
+        <div id="room-say" class="saybox hidden"></div>
+        <p class="big" id="room-hint">Pick your team. Your teacher will press START.</p>
+        <div class="pickrow">
+          <button id="room-pick0" class="pick blue" type="button">🔵 Blue Team</button>
+          <button id="room-pick1" class="pick red" type="button">🔴 Red Team</button>
+        </div>
+        <p id="room-lock" class="hint hidden">🔒 Your teacher locked the teams.</p>
+        <div class="teams2"><div id="room-team0" class="rteam"></div><div id="room-team1" class="rteam"></div></div>
+        <div class="roomfoot"><span id="room-count"></span><span id="room-ping"></span></div>
+        <button id="room-leave" class="btn small ghost" type="button">Leave room</button>
+      </div>
+      <p id="room-msg" class="msg hidden"></p>
+    </div>
+  </div>
+</div>
+
 <!-- ======================= MAIN MENU ======================= -->
 <div id="screen-menu" class="screen">
   <div class="menu-wrap">
@@ -29,6 +64,7 @@
     </header>
 
     <button id="btn-play" class="btn big" type="button">▶ PLAY: Team Battle vs Bots</button>
+    <button id="btn-join" class="btn big alt" type="button">👥 JOIN CLASS GAME</button>
     <p id="menu-msg" class="msg hidden"></p>
 
     <nav class="tabs" role="tablist">
@@ -241,6 +277,7 @@
 </div>
 
 <script src="three.min.js"></script>
+<script src="peerjs.min.js"></script>
 <script src="config.js"></script>
 <script src="questions.js"></script>
 <script src="audio.js"></script>
@@ -249,6 +286,9 @@
 <script src="bots.js"></script>
 <script src="game.js"></script>
 <script src="gate.js"></script>
+<script src="net.js"></script>
+<script src="session.js"></script>
+<script src="lobby.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

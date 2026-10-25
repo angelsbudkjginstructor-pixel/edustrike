@@ -11,6 +11,7 @@
     $('screen-menu').classList.toggle('hidden', name !== 'menu');
     $('screen-game').classList.toggle('hidden', name !== 'game');
     $('screen-gate').classList.toggle('hidden', name !== 'gate');
+    $('screen-room').classList.toggle('hidden', name !== 'room');
     document.body.dataset.screen = name;
   }
 
@@ -137,6 +138,7 @@
   /* ---------- teacher ON/OFF switch ---------- */
   function showGate(icon, title, text, canRetry) {
     if (ES.game.active) ES.game.stop();      // stop any match that is running
+    if (ES.lobby) ES.lobby.leave();           // and leave any class room
     $('gate-icon').textContent = icon; $('gate-title').textContent = title; $('gate-text').textContent = text;
     $('gate-retry').classList.toggle('hidden', !canRetry);
     showScreen('gate');
@@ -144,7 +146,7 @@
   function startGate() {
     showGate('⏳', 'Checking…', 'Asking your teacher if the game is open.', false);
     ES.gate.run({
-      onOpen: function () { if (document.body.dataset.screen === 'gate') showScreen('menu'); },
+      onOpen: function () { if (document.body.dataset.screen === 'gate') { if ($('room-code-in').value.length === 5) { $('room-name-in').value = S().name || ''; showScreen('room'); ES.lobby.show(); } else showScreen('menu'); } },
       onClosed: function (msg) { showGate('🔒', 'EduStrike is closed', msg || 'Your teacher has turned the game off. Please wait.', true); },
       onError: function () { showGate('📡', "Can't reach the game switch", 'Check your internet. The game opens again by itself when it is back.', true); }
     });
@@ -154,7 +156,20 @@
   function init() {
     build(); fillForm(); bindForm();
     $('btn-play').addEventListener('click', startGame);
-    if (ES.gate && ES.gate.enabled()) startGate(); else showScreen('menu');
+    // class game: join screen + waiting room
+    ES.lobby.init();
+    $('btn-join').addEventListener('click', function () {
+      ES.audio.unlock();
+      $('room-name-in').value = S().name || '';
+      showScreen('room'); ES.lobby.show();
+    });
+    $('room-back').addEventListener('click', function () { showScreen('menu'); });
+    $('room-leave').addEventListener('click', function () { ES.lobby.leave(); ES.lobby.show(); });
+    try {   // a link like ...index.html?room=ABCDE opens the join screen with the code filled in
+      const code = new URLSearchParams(location.search).get('room');
+      if (code) { $('room-code-in').value = ES.net.cleanCode(code); }
+    } catch (e) { /* ignore */ }
+    if (ES.gate && ES.gate.enabled()) startGate(); else if ($('room-code-in').value.length === 5) { $('room-name-in').value = S().name || ''; showScreen('room'); ES.lobby.show(); } else showScreen('menu');
     $('btn-ready').addEventListener('click', function () { ES.game.begin(); });
     $('btn-ready-quit').addEventListener('click', toMenu);
     $('btn-resume').addEventListener('click', function () { ES.game.resume(); });

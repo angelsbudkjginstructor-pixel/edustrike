@@ -177,3 +177,33 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 .gate-wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 18px; }
 .gatecard { max-width: 480px; }
 .gate-icon { font-size: 72px; line-height: 1; margin-bottom: 6px; }
+
+/* ------------------------------------------------ class game (join screen + waiting room) */
+.btn.big.alt { margin-top: 12px; background: linear-gradient(#8fd0ff, #2f86ff); color: #fff; box-shadow: 0 5px 0 #1a56b3, 0 10px 18px rgba(0,0,0,.35); }
+.btn.big.alt:active { box-shadow: 0 2px 0 #1a56b3; }
+#screen-room { overflow-y: auto; background: radial-gradient(1200px 700px at 50% -10%, #2a5db8 0%, #14305f 45%, #0b1730 100%); }
+.roomcard { max-width: 560px; width: 100%; background: #fff; color: var(--ink); border-radius: 22px; padding: 22px; text-align: center; box-shadow: 0 16px 50px rgba(0,0,0,.5); }
+.logo.small { font-size: 30px; color: var(--ink); text-shadow: none; }
+.roomcard h2 { margin: 6px 0 10px; }
+.roomcard .big { font-size: 18px; font-weight: 700; margin: 8px 0 12px; }
+.codein { width: 100%; max-width: 330px; font: 900 48px/1.1 "Segoe UI", system-ui, sans-serif; letter-spacing: 10px; text-align: center; text-transform: uppercase;
+  padding: 10px 6px 10px 16px; border-radius: 16px; border: 4px solid #b9c8e2; background: #f7faff; color: var(--ink); user-select: text; -webkit-user-select: text; }
+.codein:focus, .rlabel input:focus { outline: none; border-color: var(--blue); }
+.rlabel { display: block; margin: 16px auto 14px; max-width: 330px; text-align: left; font-weight: 800; }
+.rlabel input { width: 100%; margin-top: 6px; font: inherit; font-size: 20px; padding: 10px 12px; border-radius: 12px; border: 3px solid #c9d7ee; background: #f7faff; color: var(--ink); user-select: text; -webkit-user-select: text; }
+.roomcard .msg.bad { background: #ffe3e0; color: #8a1a0b; }
+.roomcard .msg:not(.bad) { background: #e6f1ff; color: #123a7a; }
+.codebadge { display: inline-block; background: #eef3fb; border-radius: 999px; padding: 8px 18px; font-size: 18px; font-weight: 700; }
+.codebadge b { font-weight: 900; letter-spacing: 3px; }
+.saybox { margin: 12px 0 0; background: #fff3c4; color: #5a4300; border: 3px solid #ffd23f; border-radius: 14px; padding: 12px; font-size: 20px; font-weight: 800; }
+.pickrow { display: flex; gap: 12px; justify-content: center; margin: 10px 0 6px; }
+.pick { flex: 1; max-width: 220px; font: inherit; font-size: 20px; font-weight: 900; cursor: pointer; padding: 14px 8px; border-radius: 16px; border: 4px solid transparent; color: #fff; opacity: .55; }
+.pick.blue { background: var(--blue); } .pick.red { background: var(--red); }
+.pick.on { opacity: 1; border-color: #12203a; transform: scale(1.04); }
+.pick:disabled { cursor: not-allowed; }
+.teams2 { display: flex; gap: 12px; margin-top: 12px; text-align: left; }
+.rteam { flex: 1; min-width: 0; background: #f4f7fd; border-radius: 14px; overflow: hidden; min-height: 60px; }
+.rteam h3 { margin: 0; padding: 8px 12px; color: #fff; font-size: 16px; }
+.rrow { display: flex; justify-content: space-between; padding: 6px 12px; font-weight: 700; border-bottom: 1px solid #e4ebf7; }
+.rrow.me { background: #fff3c4; }
+.roomfoot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 14px; font-weight: 700; color: #4a5a78; }

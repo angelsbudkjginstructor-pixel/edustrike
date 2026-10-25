@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 1 - vs bots + music';
+  ES.VERSION = 'Stage 3A - class room test';
 
   /* Teacher ON/OFF switch.
      Paste the Apps Script "Web app URL" between the quotes (see SETUP step).
