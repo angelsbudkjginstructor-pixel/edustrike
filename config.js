@@ -6,7 +6,18 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 4A - maps';
+  ES.VERSION = 'Stage 4B - sounds';
+
+  /* Sound files you can drop in (put the files next to index.html on GitHub).
+     name = the game event, files = the sound files for it (several files = a different one each time),
+     gain = loudness, layer: true = play ON TOP of the built-in sound instead of replacing it.
+     If a file is missing, the game quietly uses its built-in synthesised sound instead. */
+  ES.SOUND_FILES = {
+    scream: { files: ['sfx-scream-1.mp3', 'sfx-scream-2.mp3', 'sfx-scream-3.mp3', 'sfx-scream-4.mp3', 'sfx-scream-5.mp3', 'sfx-scream-6.mp3', 'sfx-scream-7.mp3', 'sfx-scream-8.mp3'], gain: 1.0, rate: 0.08 },
+    reload: { files: ['sfx-reload.mp3'], gain: 0.9, rate: 0.05 },
+    empty:  { files: ['sfx-empty.mp3'], gain: 0.9, rate: 0.05 },
+    kill:   { files: ['sfx-blow.mp3'], gain: 0.55, layer: true }
+  };
 
   /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
      This is the Metered free-trial credential 'edustrike-game' that the teacher created.

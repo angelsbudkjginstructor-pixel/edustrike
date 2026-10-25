@@ -624,6 +624,7 @@
       fb.className = 'qfb good';
       fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '');
       ES.audio.sfx('correct');
+      setTimeout(function () { ES.audio.sfx('reload'); }, 520); setTimeout(function () { ES.audio.sfx('reload', 0.9); }, 800);   // click-clack: blaster reloaded
       closeTimer = setTimeout(function () { closeQuestion(); }, 1100);
     } else {
       S.streak = 0; S.qCd = 4;
@@ -1001,7 +1002,15 @@
     world.collide(p, P.radius);
     const g = world.groundAt(p.x, p.z, p.y);
     // stay glued to the floor when walking DOWN stairs (a small drop of up to 0.3 m), so controls do not go floaty
+    const fallV = p.vy;
     if (p.y <= g || (wasGround && p.vy <= 0 && p.y - g <= 0.3)) { p.y = g; p.vy = 0; p.onGround = true; } else p.onGround = false;
+    // footsteps and landing sounds (quiet, only for you)
+    if (p.onGround && !wasGround && fallV < -5) ES.audio.sfx('land', Math.min(1, -fallV / 12));
+    if (p.onGround) {
+      const spd = Math.hypot(p.vx, p.vz);
+      if (spd > 1.2) { S.stepT = (S.stepT || 0) - dt * (spd / 5.5); if (S.stepT <= 0) { S.stepT = 0.36; ES.audio.sfx('step', 0.5 + Math.random() * 0.2); } }
+      else S.stepT = 0;
+    }
 
     // blaster
     if (fireHeld && S.fireCd <= 0 && !S.qOpen) {

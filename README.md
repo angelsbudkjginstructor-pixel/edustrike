@@ -70,3 +70,9 @@ The teacher picks the map in the class-match settings (solo players pick it in M
 - **🌳 Classic Park** – the original open arena.
 - **🏙️ City Rooftops** – five buildings with stairs up to flat roofs, low walls on the roofs for cover. Bots stay on the ground; players fight from above.
 Also new: **Player names → Show everyone's name** (teacher setting), a dramatic **scream** when a player is tagged out (Graphics & Controls → on/off).
+
+## Your own sounds (Stage 4B)
+Real recorded sounds live next to index.html as `sfx-*.mp3`. The list is in `js/config.js` → `ES.SOUND_FILES`.
+To change a sound: upload a new file with the SAME name (for example `sfx-scream-3.mp3`). To add one more scream, upload `sfx-scream-9.mp3` and add its name to the scream list.
+If a file is missing the game uses its built-in sound. Only use sounds you are allowed to share (this site is public).
+Credits: screams by creativeheroes, thanvannispen (CC BY 3.0) and JohnsonBrandEditing (CC0); clicks by Michel Baradari, apollo-music.de (CC BY 3.0).

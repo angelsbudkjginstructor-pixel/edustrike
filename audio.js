@@ -15,6 +15,40 @@
 
   let ctx = null, master = null, sfxBus = null, musicBus = null, musicFilter = null, analyser = null, noiseBuf = null;
   let sfxOn = true, musicOn = true, sfxVol = 0.8, musicVol = 0.6, screamOn = true;
+  /* ---- real recorded sounds (optional, see ES.SOUND_FILES in config.js) ---- */
+  const samples = {};          // event name -> [decoded sounds]
+  let samplesStarted = false, lastPick = {};
+  function loadSamples() {
+    if (samplesStarted || !ctx) return;
+    samplesStarted = true;
+    const cfg = ES.SOUND_FILES || {};
+    Object.keys(cfg).forEach(function (name) {
+      (cfg[name].files || []).forEach(function (file) {
+        try {
+          fetch(file).then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+            .then(function (ab) { return ab ? ctx.decodeAudioData(ab) : null; })
+            .then(function (buf) { if (buf) (samples[name] = samples[name] || []).push(buf); })
+            .catch(function () { /* missing file: the built-in sound is used instead */ });
+        } catch (e) { /* ignore */ }
+      });
+    });
+  }
+  function playSample(name, v, pan) {
+    const cfg = (ES.SOUND_FILES || {})[name], list = samples[name];
+    if (!cfg || !list || !list.length || !ensure()) return false;
+    try {
+      let i = Math.floor(Math.random() * list.length);
+      if (list.length > 1 && i === lastPick[name]) i = (i + 1) % list.length;      // never the same scream twice in a row
+      lastPick[name] = i;
+      const src = ctx.createBufferSource(), g = ctx.createGain();
+      src.buffer = list[i];
+      src.playbackRate.value = 1 + (Math.random() * 2 - 1) * (cfg.rate || 0);      // tiny pitch change so repeats do not sound identical
+      g.gain.value = Math.max(0, v) * (cfg.gain === undefined ? 1 : cfg.gain);
+      src.connect(g); g.connect(panNode(pan, sfxBus));
+      src.start();
+      return true;
+    } catch (e) { return false; }
+  }
 
   function ensure() {
     if (!sfxOn && !musicOn) return false;
@@ -37,6 +71,7 @@
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
       if (ctx.state === 'suspended') ctx.resume();
+      loadSamples();
       return true;
     } catch (e) { return false; }
   }
@@ -165,6 +200,11 @@
         tone('sine', 90, 40, 0.5, 0.12 * v, 0, p);                                // thud underneath
       } catch (e) { /* stay silent */ }
     },
+    // little double click when the blaster is reloaded (used if no sound file is dropped in)
+    reload: function (v, p) { tone('square', 1400, 900, 0.03, 0.08 * v, 0, p); tone('square', 900, 500, 0.04, 0.08 * v, 0.07, p); },
+    // soft footstep: a short dull thud (pitch changes a little each time)
+    step: function (v, p) { tone('sine', jit(120, 0.15), 60, 0.07, 0.12 * v, 0, p); noise(0.04, 0.05 * v, 900, 0, p); },
+    land: function (v, p) { tone('sine', 90, 45, 0.14, 0.2 * v, 0, p); noise(0.08, 0.1 * v, 700, 0, p); },
     jump: function () { tone('sine', 230, 560, 0.09, 0.07); noise(0.05, 0.05, 2500, 0, 0, 'bandpass'); }
   };
 
@@ -341,7 +381,16 @@
     isMusicOn: function () { return musicOn; },
     isSfxOn: function () { return sfxOn; },
     sfx: function (name, v, pan) {
-      try { if (sfxOn && SFX[name]) SFX[name](v === undefined ? 1 : v, pan || 0); } catch (e) { /* stay silent */ }
+      try {
+        if (!sfxOn) return;
+        if (name === 'scream' && !screamOn) return;
+        const vol = v === undefined ? 1 : v, cfg = (ES.SOUND_FILES || {})[name];
+        if (cfg && samples[name] && samples[name].length) {                       // a real recording exists for this event
+          const ok = playSample(name, vol, pan || 0);
+          if (ok && !cfg.layer) return;                                            // replaces the built-in sound
+        }
+        if (SFX[name]) SFX[name](vol, pan || 0);
+      } catch (e) { /* stay silent */ }
     },
     /* loudness check used by automatic tests: returns peak 0..1 of what is playing right now */
     peak: function () {
