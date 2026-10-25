@@ -8,6 +8,19 @@
 
   ES.VERSION = 'Stage 3C - Fancy graphics';
 
+  /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
+     This is the Metered free-trial credential 'edustrike-game' that the teacher created.
+     To switch the relay off, delete the credential on dashboard.metered.ca (or empty the list below). */
+  ES.ICE = {
+    fetchUrl: '',
+    servers: [
+      { urls: 'turn:global.relay.metered.ca:80', username: '99e10bd079397fc1652f6686', credential: 'JZy1Fn4amVsqe2Iq' },
+      { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: '99e10bd079397fc1652f6686', credential: 'JZy1Fn4amVsqe2Iq' },
+      { urls: 'turn:global.relay.metered.ca:443', username: '99e10bd079397fc1652f6686', credential: 'JZy1Fn4amVsqe2Iq' },
+      { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '99e10bd079397fc1652f6686', credential: 'JZy1Fn4amVsqe2Iq' }
+    ]
+  };
+
   /* Teacher ON/OFF switch.
      Paste the Apps Script "Web app URL" between the quotes (see SETUP step).
      Leave it empty ('') to turn the switch off - the game is then always open (good for testing). */

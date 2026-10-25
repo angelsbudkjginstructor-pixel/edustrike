@@ -19,7 +19,36 @@
   function available() { return typeof window.Peer === 'function'; }
 
   /* Automatic tests may point at their own local introduction server by setting window.ES_TEST_PEER */
-  function peerOptions() { return Object.assign({ debug: 0 }, window.ES_TEST_PEER || {}); }
+  function peerOptions() {
+    const o = Object.assign({ debug: 0 }, window.ES_TEST_PEER || {});
+    // Relay (TURN) servers help when two devices are on DIFFERENT networks, e.g. a student at home.
+    // They only carry traffic when a direct connection is impossible. Set up in config.js (ES.ICE).
+    if (ice.length && !(o.config && o.config.iceServers)) {
+      o.config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }].concat(ice) };
+    }
+    return o;
+  }
+
+  /* ---- relay server list: either typed into config.js (servers) or fetched from the relay provider (fetchUrl) ---- */
+  let ice = [], iceState = 'idle', iceWaiters = [];
+  function iceConfigured() { const c = ES.ICE || {}; return !!((c.servers && c.servers.length) || c.fetchUrl); }
+  function loadIce() {
+    if (iceState !== 'idle') return;
+    const c = ES.ICE || {};
+    if (c.servers && c.servers.length) ice = c.servers.slice();
+    if (!c.fetchUrl) { iceState = 'done'; return; }
+    iceState = 'loading';
+    const finish = function () { if (iceState === 'done') return; iceState = 'done'; const w = iceWaiters; iceWaiters = []; w.forEach(function (f) { f(); }); };
+    try {
+      fetch(c.fetchUrl).then(function (r) { return r.json(); }).then(function (j) { if (Array.isArray(j) && j.length) ice = ice.concat(j); finish(); }).catch(finish);   // if it fails the game still works on a normal network
+    } catch (e) { finish(); }
+    setTimeout(finish, 4000);                    // never make anyone wait more than 4 seconds for the relay list
+  }
+  function withIce(cb) {
+    loadIce();
+    if (iceState === 'done') cb(); else iceWaiters.push(cb);
+  }
+  loadIce();                                       // start fetching as soon as the page loads
 
   function newCode() {
     let s = '';
@@ -63,7 +92,7 @@
       // if the internet blinks, the already-joined students stay connected; reconnect so NEW students can still join
       mine.on('disconnected', function () { if (!closed && !mine.destroyed) { setTimeout(function () { try { mine.reconnect(); } catch (e) { /* ignore */ } }, 1500); } });
     }
-    attempt();
+    withIce(function () { if (!closed) attempt(); });
     return {
       code: function () { return code; },
       conns: conns,
@@ -80,12 +109,16 @@
     const code = cleanCode(rawCode);
     let peer = null, conn = null, done = false, timer = 0;
     const fail = function (kind, text) { if (done) return; done = true; clearTimeout(timer); h.onError(kind, text); };
-    try { peer = new window.Peer(peerOptions()); }
-    catch (e) { fail('other', 'This browser cannot do live connections. Please use Google Chrome.'); return null; }
     timer = setTimeout(function () {
-      fail('timeout', "Could not connect. Check that you typed the right code, that your teacher's room is open, and that you are on the school WiFi.");
-      try { peer.destroy(); } catch (e) { /* ignore */ }
-    }, 15000);
+      fail('timeout', iceConfigured()
+        ? "Could not connect. Check that you typed the right code and that your teacher's room is open. If you are on a school or home network that blocks games, ask your teacher."
+        : "Could not connect. Check that you typed the right code, that your teacher's room is open, and that you are on the school WiFi.");
+      try { if (peer) peer.destroy(); } catch (e) { /* ignore */ }
+    }, iceConfigured() ? 30000 : 15000);          // going through a relay takes a little longer
+    withIce(function () { if (!done) start(); });
+    function start() {
+    try { peer = new window.Peer(peerOptions()); }
+    catch (e) { fail('other', 'This browser cannot do live connections. Please use Google Chrome.'); return; }
     peer.on('open', function () {
       conn = peer.connect(PREFIX + code, { reliable: true });
       conn.on('open', function () { if (done) return; done = true; clearTimeout(timer); h.onOpen(); });
@@ -100,10 +133,11 @@
       else if (done) h.onClose();
       else fail('other', 'Connection problem: ' + (type || String(err)));
     });
+    }
     return {
       code: code,
       send: function (msg) { return safeSend(conn, msg); },
-      close: function () { done = true; clearTimeout(timer); try { peer.destroy(); } catch (e) { /* ignore */ } }
+      close: function () { done = true; clearTimeout(timer); try { if (peer) peer.destroy(); } catch (e) { /* ignore */ } }
     };
   }
 
