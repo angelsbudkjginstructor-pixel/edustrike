@@ -14,7 +14,7 @@
   const ES = (window.ES = window.ES || {});
 
   let ctx = null, master = null, sfxBus = null, musicBus = null, musicFilter = null, analyser = null, noiseBuf = null;
-  let sfxOn = true, musicOn = true, sfxVol = 0.8, musicVol = 0.6;
+  let sfxOn = true, musicOn = true, sfxVol = 0.8, musicVol = 0.6, screamOn = true;
 
   function ensure() {
     if (!sfxOn && !musicOn) return false;
@@ -131,6 +131,40 @@
       tone('triangle', 1175, 1175, 0.8, 0.12, 0.8);
     },
     lose: function () { [440, 392, 349, 294].forEach(function (f, i) { tone('triangle', f, f * 0.98, 0.34, 0.17, i * 0.17); }); },
+    /* A dramatic action-movie scream: a voice-like buzzing tone that shoots up then falls away,
+       shaped by two "mouth" filters (an AAAH vowel), with vibrato and a breathy noise. Different pitch every time. */
+    scream: function (v, p) {
+      if (!screamOn || !sfxOn || !ensure()) return;
+      try {
+        const t0 = ctx.currentTime, dur = 1.15, k = 0.85 + Math.random() * 0.35, out = panNode(p, sfxBus);
+        const master = ctx.createGain();
+        master.gain.setValueAtTime(0.0001, t0);
+        master.gain.exponentialRampToValueAtTime(Math.max(0.0003, 0.42 * v), t0 + 0.04);
+        master.gain.setValueAtTime(Math.max(0.0003, 0.42 * v), t0 + 0.45);
+        master.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        master.connect(out);
+        const lfo = ctx.createOscillator(), lfoG = ctx.createGain();            // wobble in the voice
+        lfo.frequency.value = 6.5; lfoG.gain.value = 28; lfo.connect(lfoG);
+        [0, 22].forEach(function (cents) {                                       // two slightly different voices = rough, screamy
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth'; o.detune.value = cents;
+          o.frequency.setValueAtTime(330 * k, t0);
+          o.frequency.linearRampToValueAtTime(780 * k, t0 + 0.16);
+          o.frequency.linearRampToValueAtTime(940 * k, t0 + 0.36);
+          o.frequency.exponentialRampToValueAtTime(250 * k, t0 + dur);
+          lfoG.connect(o.frequency);
+          [[820, 5, 1.0], [1350, 7, 0.7], [2600, 8, 0.25]].forEach(function (f) {  // the "mouth" shape
+            const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f[0]; bp.Q.value = f[1];
+            const g = ctx.createGain(); g.gain.value = f[2];
+            o.connect(bp); bp.connect(g); g.connect(master);
+          });
+          o.start(t0); o.stop(t0 + dur + 0.05);
+        });
+        lfo.start(t0); lfo.stop(t0 + dur + 0.05);
+        noise(0.7, 0.07 * v, 2500, 0.02, p, 'bandpass');                         // breath
+        tone('sine', 90, 40, 0.5, 0.12 * v, 0, p);                                // thud underneath
+      } catch (e) { /* stay silent */ }
+    },
     jump: function () { tone('sine', 230, 560, 0.09, 0.07); noise(0.05, 0.05, 2500, 0, 0, 'bandpass'); }
   };
 
@@ -296,6 +330,7 @@
     unlock: function () { ensure(); },
     music: music,
     setEnabled: function (on) { sfxOn = !!on; },                       // sound effects on/off
+    setScream: function (on) { screamOn = !!on; },                      // the tagged-out scream on/off
     setMusicEnabled: function (on) {
       musicOn = !!on;
       if (!ctx) return;

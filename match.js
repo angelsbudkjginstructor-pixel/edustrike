@@ -175,8 +175,8 @@
     stop();
     const humansP = ES.room.players().filter(function (p) { return p.conn; });
     if (!humansP.length) return { ok: false, error: 'No students are in the room yet.' };
-    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '' }, settings || {});
-    world = ES.buildWorld(new T.Scene(), { noVisual: true });
+    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team' }, settings || {});
+    world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
     M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null };
     let eid = 1;
@@ -195,7 +195,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: s.minutes, gfx: s.gfx || '', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: s.minutes, gfx: s.gfx || '', map: world.map, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;

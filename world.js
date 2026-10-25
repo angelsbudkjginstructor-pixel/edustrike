@@ -12,7 +12,15 @@
   const STEP = 0.25;     // how high a player can step up onto a low crate
   const LOW = 1.25;      // boxes this low can be hopped onto
 
-  /* opts.fancy    = prettier look (cartoon shading, windows, round trees, flowers, hills, clouds) for strong computers
+  /* The maps the teacher can choose from (more are added stage by stage). All share the same size, bases and spawn points. */
+  ES.MAPS_LIST = [
+    { id: 'park', name: '🌳 Classic Park', desc: 'Open grass, walls and towers' },
+    { id: 'rooftops', name: '🏙️ City Rooftops', desc: 'Buildings with stairs - fight from the roofs!' }
+  ];
+  ES.mapName = function (id) { const m = ES.MAPS_LIST.filter(function (x) { return x.id === id; })[0]; return m ? m.name : ES.MAPS_LIST[0].name; };
+
+  /* opts.map      = which map to build (see ES.MAPS_LIST)
+     opts.fancy    = prettier look (cartoon shading, windows, round trees, flowers, hills, clouds) for strong computers
      opts.noVisual = build only the collision/path-finding part (used by the teacher's page, which draws nothing) */
   /* a 4-step light ramp: makes shading look hand-drawn ("toon") */
   ES.toonGradient = function (T) {
@@ -25,16 +33,24 @@
   ES.buildWorld = function (scene, opts) {
     opts = opts || {};
     const FANCY = !!opts.fancy, NOVIS = !!opts.noVisual;
+    const MAPID = ES.MAPS_LIST.some(function (m) { return m.id === opts.map; }) ? opts.map : 'park';
+    // colours and extras that make each map feel different
+    const THEME = MAPID === 'rooftops'
+      ? { lowA: '#9aa1ab', lowB: '#8d949f', lowOuter: 0x7d8a7a, fancyBase: '#8f969f', fancyOuter: 0x7fa07a, flowers: false, plaza: ['#c9ccd4', '#bcc0c9'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(255,214,90,.8)' }
+      : { lowA: '#86cf74', lowB: '#78c466', lowOuter: 0x5fa65a, fancyBase: '#7cc86a', fancyOuter: 0x6cb868, flowers: true, plaza: ['#f1e7b8', '#e6d9a0'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(255,255,255,.55)' };
     const shade = function (hex, k) { const c = new T.Color(hex); c.multiplyScalar(k); return c.getHex(); };
     const boxes = [];    // solid things: {x0,x1,z0,z1,h}
     const vis = [];      // things to draw: boxes + cones (merged into one mesh later)
 
     /* ---------- helpers to place things ---------- */
-    function solid(cx, cz, w, d, h, color, cap, style) {
-      boxes.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h: h });
-      vis.push({ cx: cx, cy: h / 2, cz: cz, w: w, h: h, d: d, color: color });
+    // y0 (optional) = the box floats: it starts at height y0 instead of the ground (used for walls on top of roofs).
+    // walk = true means a player can stand on top of it (low crates, roofs, stairs).
+    function solid(cx, cz, w, d, h, color, cap, style, y0, walk) {
+      y0 = y0 || 0;
+      boxes.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h: h, y0: y0, walk: !!walk || (h <= LOW && !y0) });
+      vis.push({ cx: cx, cy: (y0 + h) / 2, cz: cz, w: w, h: h - y0, d: d, color: color });
       if (cap !== undefined) vis.push({ cx: cx, cy: h + 0.06, cz: cz, w: w + 0.12, h: 0.12, d: d + 0.12, color: cap });
-      if (FANCY && !NOVIS) fancyDetail(cx, cz, w, d, h, color, cap, style);
+      if (FANCY && !NOVIS && !y0 && style !== 'step') fancyDetail(cx, cz, w, d, h, color, cap, style);
     }
 
     /* Fancy only: extra little boxes that make walls, towers and crates look finished (all merged into the same single mesh) */
@@ -88,7 +104,7 @@
       vis.push({ cyl: true, cx: cx, cy: cy, cz: cz, r0: r0, r1: r1, h: h, color: color });
     }
     function tree(cx, cz, collide) {
-      if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz - 0.5, z1: cz + 0.5, h: 5 });
+      if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz - 0.5, z1: cz + 0.5, h: 5, y0: 0, walk: false });
       if (FANCY) {                                       // cartoon tree: curved trunk + three fluffy puffs
         cyl(cx, 0.9, cz, 0.22, 0.34, 1.8, 0x8a5a33);
         sphere(cx, 2.4, cz, 1.45, 0.85, 0x2f9a4e);
@@ -100,6 +116,53 @@
       cone(cx, 2.4, cz, 1.7, 2.6, 0x2f9a4e);
       cone(cx, 3.9, cz, 1.2, 2.2, 0x3bb35c);
     }
+
+    /* Stairs: n steps, each 0.24 m higher (a player can walk straight up, because 0.24 is less than a step-up of 0.25).
+       (fx, fz) = the building face the stairs touch, (dx, dz) = direction the stairs stick out of the building
+       (one of them is +1/-1, the other 0), width = how wide they are across. The highest step touches the building. */
+    function stairs(fx, fz, dx, dz, width, n, color) {
+      const run = 0.45, rise = 0.24;
+      for (let k = 1; k <= n; k++) {
+        const dist0 = (n - k) * run, mid = dist0 + run / 2, h = k * rise;
+        const cx = fx + dx * mid, cz = fz + dz * mid;
+        solid(cx, cz, dx ? run : width, dz ? run : width, h, k % 2 ? color : shade(color, 0.9), undefined, 'step', 0, true);
+      }
+    }
+    /* A low wall around a roof (cover while you fight up there). gap = where the stairs arrive, so you can step onto the roof. */
+    function parapet(cx, cz, w, d, h, gap) {
+      const T2 = 0.4, H = 0.9, col = 0xe6e9ef;
+      function seg(alongX, fixed, a, b, edge) {            // a wall piece from a to b along one axis, cut where the stairs arrive
+        const pieces = [[a, b]];
+        if (gap && gap.edge === edge) {
+          const g0 = gap.c - gap.w / 2, g1 = gap.c + gap.w / 2;
+          pieces.length = 0;
+          if (g0 > a) pieces.push([a, Math.min(g0, b)]);
+          if (g1 < b) pieces.push([Math.max(g1, a), b]);
+        }
+        pieces.forEach(function (q) {
+          if (q[1] - q[0] < 0.05) return;
+          const mid = (q[0] + q[1]) / 2, len = q[1] - q[0];
+          if (alongX) solid(mid, fixed, len, T2, h + H, col, undefined, 'wall', h); else solid(fixed, mid, T2, len, h + H, col, undefined, 'wall', h);
+        });
+      }
+      seg(true, cz - d / 2 + T2 / 2, cx - w / 2, cx + w / 2, '-z');
+      seg(true, cz + d / 2 - T2 / 2, cx - w / 2, cx + w / 2, '+z');
+      seg(false, cx - w / 2 + T2 / 2, cz - d / 2 + T2, cz + d / 2 - T2, '-x');
+      seg(false, cx + w / 2 - T2 / 2, cz - d / 2 + T2, cz + d / 2 - T2, '+x');
+    }
+    /* A building you can climb: a solid block with a flat roof you can stand on, a low wall round the roof, and stairs.
+       side = which face the stairs are on: '+x' '-x' '+z' '-z'. c = where along that face the stairs are (x or z). */
+    function building(cx, cz, w, d, h, color, capColor, side, c) {
+      solid(cx, cz, w, d, h, color, capColor, 'wall', 0, true);
+      const n = Math.round(h / 0.24), sw = 3;
+      let fx = cx, fz = cz, dx = 0, dz = 0;
+      if (side === '+x') { fx = cx + w / 2; dx = 1; fz = c; } else if (side === '-x') { fx = cx - w / 2; dx = -1; fz = c; }
+      else if (side === '+z') { fz = cz + d / 2; dz = 1; fx = c; } else { fz = cz - d / 2; dz = -1; fx = c; }
+      stairs(fx, fz, dx, dz, sw, n, 0xd8c9a3);
+      parapet(cx, cz, w, d, h, { edge: side, c: c, w: sw + 0.5 });
+    }
+    const flipSide = { '+x': '-x', '-x': '+x', '+z': '-z', '-z': '+z' };
+    function zoneBuildingColor(z) { return Math.abs(z) < 5 ? 0xc9d0dc : (z > 0 ? 0x6f9be0 : 0xe0806b); }
 
     /* Everything is placed on the "blue" half (z > 0) and mirrored onto the red half,
        so the map is perfectly fair for both teams. */
@@ -120,12 +183,13 @@
     }
 
     /* ---------- the map ---------- */
-    // outer walls
+    // outer walls (same for every map)
     solid(0, -HALF - 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
     solid(0, HALF + 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
     solid(-HALF - 0.5, 0, 1, 61, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
     solid(HALF + 0.5, 0, 1, 61, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
 
+    function buildPark() {
     // centre building with four doorways
     const BW = 0xcfd6e0, BC = 0xf2d46b;
     solid(-4.5, -7, 5, 1, 3.2, BW, BC, 'wall'); solid(4.5, -7, 5, 1, 3.2, BW, BC, 'wall');
@@ -155,6 +219,44 @@
     // a few trees as obstacles
     both(-25, 3, 1, 1, 5, 'tree');
     both(26, -4, 1, 1, 5, 'tree');
+    }
+
+    /* City Rooftops: five buildings you can climb. Stairs lead up, low walls on the roofs give cover. */
+    function buildRooftops() {
+      // the big building in the middle: stairs from the blue side AND the red side
+      solid(0, 0, 9, 9, 3.6, 0xc9d0dc, 0xf2d46b, 'wall', 0, true);
+      stairs(0, 4.5, 0, 1, 3, 15, 0xd8c9a3);
+      stairs(0, -4.5, 0, -1, 3, 15, 0xd8c9a3);
+      // roof wall with an opening at each stair
+      (function () {
+        const H = 3.6, T2 = 0.4, col = 0xe6e9ef;
+        solid(-2.9, 4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H); solid(2.9, 4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H);
+        solid(-2.9, -4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H); solid(2.9, -4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H);
+        solid(-4.3, 0, T2, 8.4, H + 0.9, col, undefined, 'wall', H); solid(4.3, 0, T2, 8.4, H + 0.9, col, undefined, 'wall', H);
+        solid(0, 0.0, 1.4, 1.4, H + 0.9, 0xd9a05b, 0xf0c98a, 'crate', H);           // a crate to hide behind in the middle of the roof
+      })();
+      // two more buildings on each half (the red half is the mirror of the blue half)
+      [[-16, 9, 8, 7, 2.4, '+x', 9], [16, 18, 7, 7, 2.4, '-x', 18]].forEach(function (b) {
+        [[1, 0], [-1, 1]].forEach(function (m) {
+          const sgn = m[0], flip = m[1];
+          const cx = b[0] * sgn, cz = b[1] * sgn, side = flip ? flipSide[b[5]] : b[5], c = b[6] * sgn;
+          // for the mirrored copy, the stair position along the face is mirrored too
+          building(cx, cz, b[2], b[3], b[4], zoneBuildingColor(cz), 0xeef2f7, side, side[1] === 'x' ? c : c * 1);
+        });
+      });
+      // cover on the ground
+      both(0, 16, 6, 1, 1.0, 'crate');
+      both(-8, 19, 4, 1, 2.6, 'wall');
+      both(9, 12, 1.6, 1.6, 0.9, 'crate'); both(10.6, 12, 1.6, 1.6, 0.9, 'crate');
+      both(-24, 14, 1.6, 1.6, 0.9, 'crate'); both(-22.4, 14, 1.6, 1.6, 0.9, 'crate'); both(-24, 15.6, 1.6, 1.6, 0.9, 'crate');
+      both(22, 6, 1.6, 1.6, 0.9, 'crate');
+      both(-14, 24, 1.6, 1.6, 0.9, 'crate');
+      both(-25, 3, 1, 1, 5, 'tree');
+      both(26, -4, 1, 1, 5, 'tree');
+      deco(0, 0.03, 0, 13, 0.06, 13, 0xd5d8df);
+    }
+
+    if (MAPID === 'rooftops') buildRooftops(); else buildPark();
 
     // ---- decoration (no collision): base pads, flags, ring of trees outside ----
     deco(0, 0.03, 25.5, 20, 0.06, 9, 0xa9cdff);
@@ -178,7 +280,7 @@
       const rr = function (a, b) { return a + Math.random() * (b - a); };
       // flowers + grass tufts in the open grass (never inside a wall)
       const petals = [0xff6fa5, 0xffd23f, 0xffffff, 0xb78bff, 0xff8a3d];
-      for (let i = 0, made = 0; i < 400 && made < 150; i++) {
+      for (let i = 0, made = 0; THEME.flowers && i < 400 && made < 150; i++) {
         const x = rr(-29, 29), z = rr(-29, 29);
         if (blockedAt(x, z, 1.0) || (Math.abs(x) < 7.5 && Math.abs(z) < 7.5)) continue;
         made++;
@@ -243,10 +345,10 @@
         const S = 1024, k = S / 64;                                     // 16 pixels per metre
         cv.width = cv.height = S;
         const c2 = cv.getContext('2d');
-        c2.fillStyle = '#7cc86a'; c2.fillRect(0, 0, S, S);
-        for (let i = 0; i < 2600; i++) {                                // soft grass patches
+        c2.fillStyle = THEME.fancyBase; c2.fillRect(0, 0, S, S);
+        for (let i = 0; i < 2600; i++) {                                // soft grass patches (or asphalt patches in the city)
           const g = Math.random();
-          c2.fillStyle = g < 0.4 ? 'rgba(98,176,84,.55)' : (g < 0.8 ? 'rgba(150,214,118,.5)' : 'rgba(70,150,76,.45)');
+          c2.fillStyle = THEME.flowers ? (g < 0.4 ? 'rgba(98,176,84,.55)' : (g < 0.8 ? 'rgba(150,214,118,.5)' : 'rgba(70,150,76,.45)')) : (g < 0.4 ? 'rgba(110,116,126,.45)' : (g < 0.8 ? 'rgba(170,176,186,.4)' : 'rgba(90,96,106,.4)'));
           const w = 6 + Math.random() * 26, h = 4 + Math.random() * 14;
           c2.fillRect(Math.random() * S, Math.random() * S, w, h);
         }
@@ -257,21 +359,21 @@
             c2.fillRect(px + x, pz + y, Math.min(t, pw - x) - gap, Math.min(t, pd - y) - gap);
           }
         };
-        tiles(-6.6, -6.6, 13.2, 13.2, '#f1e7b8', '#e6d9a0', 2);          // centre plaza
-        tiles(-10, 21, 20, 9, '#b9d6ff', '#a4c8fa', 2);                   // blue base
-        tiles(-10, -30, 20, 9, '#ffc7b8', '#ffb4a2', 2);                  // red base
-        c2.fillStyle = 'rgba(255,255,255,.55)';                          // dashed centre lane
+        tiles(-6.6, -6.6, 13.2, 13.2, THEME.plaza[0], THEME.plaza[1], 2);   // centre plaza
+        tiles(-10, 21, 20, 9, THEME.blue[0], THEME.blue[1], 2);             // blue base
+        tiles(-10, -30, 20, 9, THEME.red[0], THEME.red[1], 2);              // red base
+        c2.fillStyle = THEME.lane;                                          // dashed centre lane
         for (let z = -20; z < 20; z += 2.4) if (Math.abs(z) > 7.5) c2.fillRect((-0.15 + 32) * k, (z + 32) * k, 0.3 * k, 1.2 * k);
         const flowers = ['#ff6fa5', '#ffd23f', '#ffffff', '#b78bff'];     // painted flower dots
-        for (let i = 0; i < 380; i++) { c2.fillStyle = flowers[i % 4]; c2.beginPath(); c2.arc(Math.random() * S, Math.random() * S, 2 + Math.random() * 2, 0, 7); c2.fill(); }
+        for (let i = 0; THEME.flowers && i < 380; i++) { c2.fillStyle = flowers[i % 4]; c2.beginPath(); c2.arc(Math.random() * S, Math.random() * S, 2 + Math.random() * 2, 0, 7); c2.fill(); }
         c2.strokeStyle = 'rgba(0,0,0,.18)'; c2.lineWidth = 6; c2.strokeRect(3, 3, S - 6, S - 6);
         tex = new T.CanvasTexture(cv);
         tex.anisotropy = 4;
       } else {
         cv.width = cv.height = 64;
         const c2 = cv.getContext('2d');
-        c2.fillStyle = '#86cf74'; c2.fillRect(0, 0, 64, 64);
-        c2.fillStyle = '#78c466'; c2.fillRect(0, 0, 32, 32); c2.fillRect(32, 32, 32, 32);
+        c2.fillStyle = THEME.lowA; c2.fillRect(0, 0, 64, 64);
+        c2.fillStyle = THEME.lowB; c2.fillRect(0, 0, 32, 32); c2.fillRect(32, 32, 32, 32);
         tex = new T.CanvasTexture(cv);
         tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.magFilter = T.NearestFilter;
         tex.repeat.set(16, 16);
@@ -280,7 +382,7 @@
       ground = new T.Mesh(new T.PlaneGeometry(64, 64), new T.MeshLambertMaterial({ map: tex }));
       ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
       scene.add(ground);
-      outer = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({ color: FANCY ? 0x6cb868 : 0x5fa65a }));
+      outer = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({ color: FANCY ? THEME.fancyOuter : THEME.lowOuter }));
       outer.rotation.x = -Math.PI / 2; outer.position.y = -0.04;
       scene.add(outer);
 
@@ -317,7 +419,8 @@
       for (let it = 0; it < 2; it++) {
         for (let k = 0; k < boxes.length; k++) {
           const b = boxes[k];
-          if (b.h <= LOW && e.y >= b.h - STEP) continue;          // feet above a low crate: free to pass
+          if (b.walk && e.y >= b.h - STEP) continue;               // feet on top of a crate, step or roof: free to pass
+          if (b.y0 && e.y >= b.h) continue;                         // above a wall that sits on a roof
           const cx = e.x < b.x0 ? b.x0 : (e.x > b.x1 ? b.x1 : e.x);
           const cz = e.z < b.z0 ? b.z0 : (e.z > b.z1 ? b.z1 : e.z);
           const dx = e.x - cx, dz = e.z - cz, d2 = dx * dx + dz * dz;
@@ -339,7 +442,7 @@
       let g = 0;
       for (let k = 0; k < boxes.length; k++) {
         const b = boxes[k];
-        if (b.h <= LOW && x > b.x0 - 0.15 && x < b.x1 + 0.15 && z > b.z0 - 0.15 && z < b.z1 + 0.15 && y >= b.h - STEP && b.h > g) g = b.h;
+        if (b.walk && x > b.x0 - 0.15 && x < b.x1 + 0.15 && z > b.z0 - 0.15 && z < b.z1 + 0.15 && y >= b.h - STEP && b.h > g) g = b.h;
       }
       return g;
     }
@@ -356,8 +459,8 @@
         else { let a = (b.x0 - ox) / dx, c = (b.x1 - ox) / dx; if (a > c) { const s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) continue; }
         if (Math.abs(dz) < 1e-9) { if (oz < b.z0 || oz > b.z1) continue; }
         else { let a = (b.z0 - oz) / dz, c = (b.z1 - oz) / dz; if (a > c) { const s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) continue; }
-        if (Math.abs(dy) < 1e-9) { if (oy < 0 || oy > b.h) continue; }
-        else { let a = (0 - oy) / dy, c = (b.h - oy) / dy; if (a > c) { const s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) continue; }
+        if (Math.abs(dy) < 1e-9) { if (oy < b.y0 || oy > b.h) continue; }
+        else { let a = (b.y0 - oy) / dy, c = (b.h - oy) / dy; if (a > c) { const s = a; a = c; c = s; } if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) continue; }
         if (t0 < best) best = t0;
       }
       return best;
@@ -374,6 +477,7 @@
     function blockedAt(px, pz, r) {
       for (let k = 0; k < boxes.length; k++) {
         const b = boxes[k];
+        if (b.y0) continue;                                   // walls on roofs are inside buildings anyway
         if (px > b.x0 - r && px < b.x1 + r && pz > b.z0 - r && pz < b.z1 + r) return true;
       }
       return false;
@@ -522,13 +626,14 @@
       ctx.fillStyle = 'rgba(80,140,255,.28)'; ctx.fillRect(0, size * 0.5 + 21 * s, size, 9 * s);
       ctx.fillStyle = 'rgba(255,100,70,.28)'; ctx.fillRect(0, 0, size, 9 * s);
       boxes.forEach(function (b) {
-        ctx.fillStyle = b.h > LOW ? '#9fb0c8' : '#c99a5b';
+        if (b.y0) return;
+        ctx.fillStyle = b.walk && b.h > LOW ? '#e3d9b8' : (b.h > LOW ? '#9fb0c8' : '#c99a5b');
         ctx.fillRect((b.x0 + HALF) * s, (b.z0 + HALF) * s, (b.x1 - b.x0) * s, (b.z1 - b.z0) * s);
       });
     }
 
     return {
-      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns,
+      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID,
       collide: collide, groundAt: groundAt,
       rayWorld: rayWorld, clearLine: clearLine,
       findPath: findPath, randomSpot: randomSpot, lineFree: lineFree, blockedAt: blockedAt,

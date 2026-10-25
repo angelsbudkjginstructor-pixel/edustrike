@@ -96,6 +96,10 @@
           <option value="8">8 minutes</option><option value="10">10 minutes</option>
         </select>
       </label>
+      <label class="row">Map (solo play)
+        <select id="set-map"></select>
+      </label>
+      <p class="hint">In a class match your teacher chooses the map.</p>
       <div class="row">Enemy bots
         <div class="seg" id="set-diff">
           <button type="button" data-v="easy">😀 Easy</button>
@@ -158,6 +162,7 @@
         <input id="set-musicvol" type="range" min="0" max="1" step="0.05">
       </label>
       <label class="row check"><input id="set-sound" type="checkbox"> 🔫 Sound effects (lasers)</label>
+      <label class="row check"><input id="set-scream" type="checkbox"> 😱 Scream when a player is tagged out</label>
       <label class="row">Sound volume
         <input id="set-sfxvol" type="range" min="0" max="1" step="0.05">
       </label>

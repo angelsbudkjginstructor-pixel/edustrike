@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 3C - Fancy graphics';
+  ES.VERSION = 'Stage 4A - maps';
 
   /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
      This is the Metered free-trial credential 'edustrike-game' that the teacher created.
@@ -81,7 +81,8 @@
     answerMode: 'slow', // 'slow' = world slows down while answering, 'live' = no slow-down
     gfx: 'low', showFps: true, aimAssist: true, radar: true,
     sens: 1, fov: 75, sound: true, lookMode: 'lock', // 'lock' = pointer lock, 'keys' = arrow keys + right-drag
-    music: true, musicVol: 0.6, sfxVol: 0.8
+    music: true, musicVol: 0.6, sfxVol: 0.8, scream: true,
+    map: 'park'
   };
 
   const KEY = 'edustrike.settings.v1';

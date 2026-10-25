@@ -24,7 +24,7 @@
   let radarBase, radarCtx, radarT = 0, hudT = 0;
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
   let toastT = 0, closeTimer = 0, relockTimer = 0;
-  let sunLight = null, rings = [], ringI = 0, outlineMeshes = [];
+  let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
   const myTeam = function () { return NET ? NET.team : 0; };
   const r2 = function (v) { return Math.round(v * 100) / 100; };
@@ -45,6 +45,7 @@
     if (opts && opts.net && opts.net.gfx && ES.GFX[opts.net.gfx]) st.gfx = opts.net.gfx;      // the teacher can make everybody use one graphics level
     gfx = ES.GFX[st.gfx] || ES.GFX.low;
     G.downgraded = false; outlineMeshes = []; rings = []; ringI = 0;
+    namesAll = !!(opts && opts.net && opts.net.names === 'all');      // teacher setting: show every player's name
 
     const wrap = $('gl-wrap');
     wrap.innerHTML = '';
@@ -83,7 +84,7 @@
     camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, gfx.fancy ? 240 : 140);
     scene.add(camera);
 
-    world = ES.buildWorld(scene, { fancy: !!gfx.fancy });
+    world = ES.buildWorld(scene, { fancy: !!gfx.fancy, map: (opts && opts.net && opts.net.map) || st.map });
     buildShared();
     buildGun();
     buildEffects();
@@ -302,14 +303,14 @@
     if (gfx.fancy) buildFancyShared();
   }
 
-  function makeNameSprite(name, css) {
+  function makeNameSprite(name, css, seeThroughWalls) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 64;
     const x = c.getContext('2d');
     x.fillStyle = css; x.globalAlpha = 0.85;
     x.beginPath(); x.moveTo(20, 6); x.lineTo(236, 6); x.quadraticCurveTo(250, 6, 250, 20); x.lineTo(250, 44); x.quadraticCurveTo(250, 58, 236, 58); x.lineTo(20, 58); x.quadraticCurveTo(6, 58, 6, 44); x.lineTo(6, 20); x.quadraticCurveTo(6, 6, 20, 6); x.fill();
     x.globalAlpha = 1; x.fillStyle = '#fff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(name, 128, 34);
     const tex = new T.CanvasTexture(c);
-    const spr = new T.Sprite(new T.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const spr = new T.Sprite(new T.SpriteMaterial({ map: tex, depthTest: !seeThroughWalls, transparent: true }));   // teammates show through walls, enemies' names do not (fair play)
     spr.scale.set(1.7, 0.42, 1);
     return spr;
   }
@@ -328,7 +329,7 @@
     if (gfx.shadows) { body.castShadow = true; legL.castShadow = legR.castShadow = true; }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.75; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === myTeam()) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css); nm.position.y = 2.4; root.add(nm); }
+    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.4; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble };
     return root;
   }
@@ -347,7 +348,7 @@
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.7; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === myTeam()) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css); nm.position.y = 2.2; root.add(nm); }
+    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.2; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, bubble: bubble };
     return root;
   }
@@ -479,6 +480,7 @@
     target.alive = false; target.hp = 0; target.deaths++; target.respawnT = P.respawn; target.deathT = 0.5;
     target.target = null; target.path = null;
     burst(target.x, target.y + 1, target.z, ES.TEAMS[target.team].color, 12);
+    if (!target.isPlayer) G.soundAt('scream', target.x, target.z, 0.9);       // bots scream too (quieter when far away)
     if (attacker) {
       attacker.kills++; S.score[attacker.team]++;
       feed(attacker, target, head);
@@ -489,7 +491,7 @@
       fireHeld = false;
       $('death-text').textContent = attacker ? 'Tagged by ' + attacker.name + '!' : 'You were tagged!';
       show('ov-death', true);
-      ES.audio.sfx('die');
+      ES.audio.sfx('die'); ES.audio.sfx('scream', 1);
     }
     if (attacker && attacker.isPlayer) { S.stats.kills++; ES.audio.sfx('kill'); }
     if (S.score[0] >= S.target || S.score[1] >= S.target) endMatch('score');
@@ -994,10 +996,12 @@
     const acc = Math.min(1, (p.onGround ? 14 : 3) * dt);
     p.vx += (wx - p.vx) * acc; p.vz += (wz - p.vz) * acc;
     p.x += p.vx * dt; p.z += p.vz * dt;
+    const wasGround = p.onGround;
     p.vy -= P.gravity * dt; p.y += p.vy * dt;
     world.collide(p, P.radius);
     const g = world.groundAt(p.x, p.z, p.y);
-    if (p.y <= g) { p.y = g; p.vy = 0; p.onGround = true; } else p.onGround = false;
+    // stay glued to the floor when walking DOWN stairs (a small drop of up to 0.3 m), so controls do not go floaty
+    if (p.y <= g || (wasGround && p.vy <= 0 && p.y - g <= 0.3)) { p.y = g; p.vy = 0; p.onGround = true; } else p.onGround = false;
 
     // blaster
     if (fireHeld && S.fireCd <= 0 && !S.qOpen) {
@@ -1270,6 +1274,7 @@
       if (!v) return;
       v.deaths++; if (a) { a.kills++; feed(a, v, !!ev[3]); }
       burst(v.x, v.y + 1, v.z, ES.TEAMS[v.team].color, 12);
+      if (v !== player) G.soundAt('scream', v.x, v.z, 0.9);
       if (v === player) $('death-text').textContent = a ? 'Tagged by ' + a.name + '!' : 'You were tagged!';
       if (a === player) { S.stats.kills++; ES.audio.sfx('kill'); }
     } else if (k === 'hurt') {
@@ -1289,7 +1294,7 @@
     if (S.qOpen) cancelQuestion(true);
     fireHeld = false;
     show('ov-death', true);
-    ES.audio.sfx('die');
+    ES.audio.sfx('die'); ES.audio.sfx('scream', 1);
   }
 
   G.netRespawn = function (m) {

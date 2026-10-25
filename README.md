@@ -64,3 +64,9 @@ Menu → Graphics has Low (default, smoothest), Medium, High and **✨ Fancy** (
 flowers, trees, hills, clouds, glowing lasers). Fancy is never switched on by itself. If a computer cannot keep up (under
 28 FPS for about 4 seconds) the game quietly switches to a lighter look and remembers Low for next time.
 In a class match the teacher can choose **Graphics for everyone → Force Low** so every student laptop runs the light version.
+
+## Maps (Stage 4A)
+The teacher picks the map in the class-match settings (solo players pick it in Match → Map).
+- **🌳 Classic Park** – the original open arena.
+- **🏙️ City Rooftops** – five buildings with stairs up to flat roofs, low walls on the roofs for cover. Bots stay on the ground; players fight from above.
+Also new: **Player names → Show everyone's name** (teacher setting), a dramatic **scream** when a player is tagged out (Graphics & Controls → on/off).

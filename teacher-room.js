@@ -41,10 +41,10 @@
   /* ---------- match controls ---------- */
   const SETKEY = 'edustrike.teacher.match.v1';
   function loadSettings() {
-    try { const j = JSON.parse(localStorage.getItem(SETKEY) || '{}'); ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx'].forEach(function (id) { if (j[id]) $(id).value = j[id]; }); } catch (e) { /* ignore */ }
+    try { const j = JSON.parse(localStorage.getItem(SETKEY) || '{}'); ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { if (j[id]) $(id).value = j[id]; }); } catch (e) { /* ignore */ }
   }
   function saveSettings() {
-    try { const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx'].forEach(function (id) { j[id] = $(id).value; }); localStorage.setItem(SETKEY, JSON.stringify(j)); } catch (e) { /* ignore */ }
+    try { const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { j[id] = $(id).value; }); localStorage.setItem(SETKEY, JSON.stringify(j)); } catch (e) { /* ignore */ }
   }
   function mmss(t) { t = Math.max(0, Math.ceil(t)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
 
@@ -78,12 +78,14 @@
   $('r-start').addEventListener('click', function () {
     saveSettings();
     $('r-start-err').textContent = '';
-    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value });
+    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value });
     if (!r.ok) { $('r-start-err').textContent = r.error; return; }
     showMatchUi(true); renderLive(ES.match.info());
   });
   $('r-end').addEventListener('click', function () { if (confirm('End the match now?')) ES.match.endNow(); });
   $('r-back').addEventListener('click', function () { ES.match.toLobby(); showMatchUi(false); });
+  // fill the map list (from world.js), then restore the teacher's last choices
+  $('m-map').innerHTML = ES.MAPS_LIST.map(function (m) { return '<option value="' + m.id + '">' + m.name + ' - ' + m.desc + '</option>'; }).join('');
   loadSettings();
 
   function setOpenUi(on) { $('r-closed').classList.toggle('hidden', on); $('r-opened').classList.toggle('hidden', !on); }
