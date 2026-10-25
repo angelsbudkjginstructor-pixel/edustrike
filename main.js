@@ -20,7 +20,7 @@
     const s = S();
     ES.audio.setEnabled(s.sound); ES.audio.setMusicEnabled(s.music);
     ES.audio.setMusicVolume(s.musicVol); ES.audio.setSfxVolume(s.sfxVol);
-    ES.audio.setScream(s.scream !== false);
+    ES.audio.setScream(s.scream !== false); ES.audio.setTrackMusic(s.trackMusic !== false);
   }
 
   /* ---------- fill the form from saved settings ---------- */
@@ -34,7 +34,7 @@
     $('set-gfx').value = s.gfx; $('set-fps').checked = s.showFps; $('set-aim').checked = s.aimAssist; $('set-radar').checked = s.radar;
     $('set-sound').checked = s.sound; $('set-sens').value = s.sens; $('set-fov').value = s.fov; $('set-look').value = s.lookMode;
     Array.prototype.forEach.call($('set-subjects').children, function (c) { c.classList.toggle('on', !!s.subjects[c.dataset.k]); });
-    $('set-scream').checked = s.scream !== false;
+    $('set-scream').checked = s.scream !== false; $('set-track').checked = s.trackMusic !== false;
     $('set-map').value = ES.MAPS_LIST.some(function (m) { return m.id === s.map; }) ? s.map : 'park';
     $('set-music').checked = s.music; $('set-musicvol').value = s.musicVol; $('set-sfxvol').value = s.sfxVol;
     applyAudio();
@@ -88,6 +88,7 @@
     $('set-aim').addEventListener('change', function () { s.aimAssist = $('set-aim').checked; save(); });
     $('set-radar').addEventListener('change', function () { s.radar = $('set-radar').checked; save(); });
     $('set-sound').addEventListener('change', function () { s.sound = $('set-sound').checked; ES.audio.setEnabled(s.sound); save(); });
+    $('set-track').addEventListener('change', function () { s.trackMusic = $('set-track').checked; applyAudio(); save(); });
     $('set-scream').addEventListener('change', function () { s.scream = $('set-scream').checked; applyAudio(); save(); if (s.scream) ES.audio.sfx('scream', 0.8); });
     $('set-map').addEventListener('change', function () { s.map = $('set-map').value; save(); });
     $('set-music').addEventListener('change', function () { s.music = $('set-music').checked; applyAudio(); save(); });

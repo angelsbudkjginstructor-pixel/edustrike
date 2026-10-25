@@ -33,6 +33,30 @@
       });
     });
   }
+  /* the match music track (a recorded song). Played in a loop through the same volume + "muffle while answering" controls as the built-in music. */
+  let trackBuf = null, trackSrc = null, trackTried = false, trackOn = true;
+  function loadTrack() {
+    const f = (ES.MUSIC_FILES || {}).play;
+    if (!f || trackTried || !ctx || !trackOn) return;          // trackOn = false: weak computer, keep the light built-in music only
+    trackTried = true;
+    try {
+      fetch(f).then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+        .then(function (ab) { return ab ? ctx.decodeAudioData(ab) : null; })
+        .then(function (buf) { if (buf) trackBuf = buf; })
+        .catch(function () { /* no file: built-in music is used */ });
+    } catch (e) { /* ignore */ }
+  }
+  function startTrack() {
+    stopTrack(0);
+    trackSrc = ctx.createBufferSource(); trackSrc.buffer = trackBuf; trackSrc.loop = true;
+    const g = ctx.createGain(); g.gain.value = (ES.MUSIC_FILES || {}).gain || 1;
+    trackSrc.connect(g); g.connect(musicBus);
+    trackSrc.start();
+  }
+  function stopTrack(delay) {
+    const s = trackSrc; trackSrc = null;
+    if (s) setTimeout(function () { try { s.stop(); } catch (e) { /* already stopped */ } }, delay || 0);
+  }
   function playSample(name, v, pan) {
     const cfg = (ES.SOUND_FILES || {})[name], list = samples[name];
     if (!cfg || !list || !list.length || !ensure()) return false;
@@ -71,7 +95,7 @@
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
       if (ctx.state === 'suspended') ctx.resume();
-      loadSamples();
+      loadSamples(); loadTrack();
       return true;
     } catch (e) { return false; }
   }
@@ -313,7 +337,7 @@
   }
 
   function schedule() {
-    if (!ctx || !M.running || M.paused) return;
+    if (!ctx || !M.running || M.paused || trackSrc) return;      // a recorded track is playing: nothing to compose
     try {
       const now = ctx.currentTime;
       if (M.nextT < now - 0.4) M.nextT = now + 0.05;            // computer stalled: skip ahead instead of racing to catch up
@@ -335,18 +359,19 @@
     start: function (mode) {
       if (!musicOn || !ensure()) return;
       try {
-        clearInterval(M.timer);
+        clearInterval(M.timer); stopTrack(0);
         M.mode = mode || 'play'; M.running = true; M.paused = false;
         M.step = 0; M.bar = 0; M.nextT = ctx.currentTime + 0.1;
         M.intensity = M.target = (M.mode === 'menu' ? 0.1 : 0.4);
         fadeTo(level(), 0.15);
+        if (M.mode === 'play' && trackBuf && trackOn) startTrack();          // the recorded match music
         M.timer = setInterval(schedule, 40);
       } catch (e) { /* stay silent */ }
     },
     stop: function (fade) {
       if (!ctx) return;
       try {
-        M.running = false; fadeTo(0, fade || 0.1);
+        M.running = false; fadeTo(0, fade || 0.1); stopTrack(((fade || 0.1) * 1000) + 400);
         const t = M.timer; setTimeout(function () { if (!M.running) clearInterval(t); }, 800);
       } catch (e) { /* ignore */ }
     },
@@ -370,7 +395,8 @@
     unlock: function () { ensure(); },
     music: music,
     setEnabled: function (on) { sfxOn = !!on; },                       // sound effects on/off
-    setScream: function (on) { screamOn = !!on; },                      // the tagged-out scream on/off
+    setScream: function (on) { screamOn = !!on; },
+    setTrackMusic: function (on) { trackOn = !!on; if (trackOn) loadTrack(); else { stopTrack(0); trackBuf = null; trackTried = false; } },   // recorded match music on/off (off frees its memory)                      // the tagged-out scream on/off
     setMusicEnabled: function (on) {
       musicOn = !!on;
       if (!ctx) return;

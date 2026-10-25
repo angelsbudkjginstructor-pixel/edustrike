@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 4B - sounds';
+  ES.VERSION = 'Stage 4C - pistol + music';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -16,8 +16,12 @@
     scream: { files: ['sfx-scream-1.mp3', 'sfx-scream-2.mp3', 'sfx-scream-3.mp3', 'sfx-scream-4.mp3', 'sfx-scream-5.mp3', 'sfx-scream-6.mp3', 'sfx-scream-7.mp3', 'sfx-scream-8.mp3'], gain: 1.0, rate: 0.08 },
     reload: { files: ['sfx-reload.mp3'], gain: 0.9, rate: 0.05 },
     empty:  { files: ['sfx-empty.mp3'], gain: 0.9, rate: 0.05 },
-    kill:   { files: ['sfx-blow.mp3'], gain: 0.55, layer: true }
+    kill:   { files: ['sfx-blow.mp3'], gain: 0.55, layer: true },
+    shoot:     { files: ['sfx-pistol.mp3'], gain: 0.85, rate: 0.06 },      // your pistol
+    botShoot:  { files: ['sfx-pistol.mp3'], gain: 0.5, rate: 0.12 }        // everybody else's pistol (softer, and quieter with distance)
   };
+  /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
+  ES.MUSIC_FILES = { play: 'music-thriller.mp3', gain: 1.0 };
 
   /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
      This is the Metered free-trial credential 'edustrike-game' that the teacher created.
@@ -92,7 +96,7 @@
     answerMode: 'slow', // 'slow' = world slows down while answering, 'live' = no slow-down
     gfx: 'low', showFps: true, aimAssist: true, radar: true,
     sens: 1, fov: 75, sound: true, lookMode: 'lock', // 'lock' = pointer lock, 'keys' = arrow keys + right-drag
-    music: true, musicVol: 0.6, sfxVol: 0.8, scream: true,
+    music: true, musicVol: 0.6, sfxVol: 0.8, scream: true, trackMusic: true,
     map: 'park'
   };
 
