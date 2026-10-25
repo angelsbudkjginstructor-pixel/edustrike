@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>EduStrike – Teacher Control</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  html, body { overflow: auto; height: auto; min-height: 100%; background: radial-gradient(1000px 600px at 50% -10%, #2a5db8 0%, #14305f 50%, #0b1730 100%) fixed; }
+  .t-wrap { max-width: 460px; margin: 0 auto; padding: 22px 16px 40px; text-align: center; }
+  .t-card { background: #fff; color: #12203a; border-radius: 22px; padding: 22px; box-shadow: 0 16px 50px rgba(0,0,0,.5); text-align: left; }
+  .t-status { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 26px; font-weight: 900; padding: 12px; border-radius: 16px; background: #eef3fb; }
+  .t-status .dot { width: 18px; height: 18px; border-radius: 50%; background: #9aa8c2; }
+  .t-status.open { background: #d9f7e3; color: #0d6b34; } .t-status.open .dot { background: #1fae5a; }
+  .t-status.closed { background: #ffe3e0; color: #8a1a0b; } .t-status.closed .dot { background: #e0301e; }
+  .t-card label { display: block; font-weight: 800; margin: 16px 0 6px; }
+  .t-card input[type=password], .t-card input[type=text] { width: 100%; font: inherit; font-size: 20px; padding: 10px 12px; border-radius: 12px; border: 2px solid #c9d7ee; background: #f7faff; color: #12203a; user-select: text; -webkit-user-select: text; }
+  .t-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+  .t-btns .btn { width: 100%; font-size: 20px; padding: 18px 8px; }
+  .btn.on { background: linear-gradient(#7dff9f, #1fb85a); box-shadow: 0 5px 0 #0d7a38, 0 10px 18px rgba(0,0,0,.35); }
+  .btn.off { background: linear-gradient(#ff9a8d, #e0301e); color: #fff; box-shadow: 0 5px 0 #9a1d10, 0 10px 18px rgba(0,0,0,.35); }
+  .t-msg { margin-top: 14px; min-height: 24px; font-weight: 800; text-align: center; }
+  .t-msg.good { color: #0d6b34; } .t-msg.bad { color: #b3261e; }
+  .t-small { margin-top: 12px; font-size: 13px; color: #5a6a88; font-weight: 600; text-align: center; }
+  .t-nourl { background: #fff0ee; color: #8a1a0b; padding: 12px; border-radius: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="t-wrap">
+  <div class="logo" style="font-size:40px">EDU<span>STRIKE</span></div>
+  <p class="tag">Teacher control</p>
+
+  <div class="t-card">
+    <div id="t-status" class="t-status"><span class="dot"></span><span id="t-status-text">Checking…</span></div>
+
+    <div id="t-nourl" class="t-nourl hidden">The switch is not connected yet. Open <b>config.js</b> and paste the Apps Script web app URL.</div>
+
+    <label for="t-pin">Teacher PIN</label>
+    <input id="t-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Type your secret PIN">
+
+    <label for="t-note">Message for students (shown when OFF)</label>
+    <input id="t-note" type="text" maxlength="120" value="Class is over. See you next time!">
+
+    <div class="t-btns">
+      <button id="t-on" class="btn on" type="button">🟢 TURN ON</button>
+      <button id="t-off" class="btn off" type="button">🔴 TURN OFF</button>
+    </div>
+    <div id="t-msg" class="t-msg"></div>
+    <div class="t-small">Students' games check this switch about once a minute. Turning OFF stops a game that is already running.</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="gate.js"></script>
+<script src="teacher.js"></script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EduStrike – Answer to Reload!</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ======================= TEACHER SWITCH SCREEN ======================= -->
+<div id="screen-gate" class="screen hidden">
+  <div class="gate-wrap">
+    <div class="card gatecard">
+      <div id="gate-icon" class="gate-icon">⏳</div>
+      <h2 id="gate-title">Checking…</h2>
+      <p id="gate-text" class="big">Please wait a moment.</p>
+      <button id="gate-retry" class="btn small hidden" type="button">Check again</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= MAIN MENU ======================= -->
+<div id="screen-menu" class="screen">
+  <div class="menu-wrap">
+    <header class="brand">
+      <div class="logo">EDU<span>STRIKE</span></div>
+      <p class="tag">Answer questions to reload your blaster! 🧠⚡</p>
+    </header>
+
+    <button id="btn-play" class="btn big" type="button">▶ PLAY: Team Battle vs Bots</button>
+    <p id="menu-msg" class="msg hidden"></p>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="t-match" type="button">🎮 Match</button>
+      <button class="tab" data-tab="t-quest" type="button">🧠 Questions</button>
+      <button class="tab" data-tab="t-gfx" type="button">⚙️ Graphics &amp; Controls</button>
+      <button class="tab" data-tab="t-how" type="button">❓ How to play</button>
+    </nav>
+
+    <section id="t-match" class="panel">
+      <label class="row">Your name
+        <input id="set-name" type="text" maxlength="12" autocomplete="off">
+      </label>
+      <label class="row">Players per team
+        <select id="set-bots">
+          <option value="2">2 vs 2</option><option value="3">3 vs 3</option><option value="4">4 vs 4</option>
+          <option value="5">5 vs 5</option><option value="6">6 vs 6</option>
+        </select>
+      </label>
+      <label class="row">Win by tagging
+        <select id="set-kills">
+          <option value="10">10 enemies</option><option value="15">15 enemies</option>
+          <option value="20">20 enemies</option><option value="30">30 enemies</option>
+        </select>
+      </label>
+      <label class="row">Time limit
+        <select id="set-minutes">
+          <option value="3">3 minutes</option><option value="5">5 minutes</option>
+          <option value="8">8 minutes</option><option value="10">10 minutes</option>
+        </select>
+      </label>
+      <div class="row">Enemy bots
+        <div class="seg" id="set-diff">
+          <button type="button" data-v="easy">😀 Easy</button>
+          <button type="button" data-v="normal">😎 Normal</button>
+          <button type="button" data-v="hard">🔥 Hard</button>
+        </div>
+      </div>
+      <p class="hint">You are on the <b style="color:#2f86ff">Blue Team</b> with friendly bots. Enemy bots must answer questions to reload too!</p>
+    </section>
+
+    <section id="t-quest" class="panel hidden">
+      <div class="row col">Subjects
+        <div id="set-subjects" class="chips"></div>
+      </div>
+      <label class="row">Grades from
+        <span class="pair">
+          <select id="set-gmin"></select> to <select id="set-gmax"></select>
+        </span>
+      </label>
+      <label class="row">Time to answer
+        <select id="set-qtime">
+          <option value="0">No time limit</option><option value="15">15 seconds</option>
+          <option value="30">30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option>
+        </select>
+      </label>
+      <label class="row">Ammo for a correct answer
+        <select id="set-reward">
+          <option value="8">8 ⚡</option><option value="12">12 ⚡</option><option value="16">16 ⚡</option><option value="20">20 ⚡</option>
+        </select>
+      </label>
+      <label class="row">Ammo for a wrong answer
+        <select id="set-wrong">
+          <option value="0">0 (none)</option><option value="2">2 ⚡ (nice try)</option><option value="4">4 ⚡</option>
+        </select>
+      </label>
+      <label class="row">While answering
+        <select id="set-ansmode">
+          <option value="slow">Game slows down (recommended)</option>
+          <option value="live">Game keeps running (harder)</option>
+        </select>
+      </label>
+      <p id="pool-info" class="hint"></p>
+    </section>
+
+    <section id="t-gfx" class="panel hidden">
+      <label class="row">Graphics
+        <select id="set-gfx">
+          <option value="low">Low – fastest (best for Chromebooks)</option>
+          <option value="medium">Medium</option>
+          <option value="high">High – shadows (strong laptops)</option>
+        </select>
+      </label>
+      <label class="row check"><input id="set-fps" type="checkbox"> Show FPS (speed) number</label>
+      <label class="row check"><input id="set-aim" type="checkbox"> Aim assist (bigger target area)</label>
+      <label class="row check"><input id="set-radar" type="checkbox"> Radar shows enemies</label>
+      <label class="row check"><input id="set-music" type="checkbox"> 🎵 Music</label>
+      <label class="row">Music volume
+        <input id="set-musicvol" type="range" min="0" max="1" step="0.05">
+      </label>
+      <label class="row check"><input id="set-sound" type="checkbox"> 🔫 Sound effects (lasers)</label>
+      <label class="row">Sound volume
+        <input id="set-sfxvol" type="range" min="0" max="1" step="0.05">
+      </label>
+      <div class="row"><button id="btn-testsound" class="btn ghost" type="button">🔊 Test sounds</button></div>
+      <label class="row">Mouse speed
+        <input id="set-sens" type="range" min="0.3" max="2.5" step="0.1">
+      </label>
+      <label class="row">Field of view
+        <input id="set-fov" type="range" min="60" max="100" step="1">
+      </label>
+      <label class="row">Looking around
+        <select id="set-look">
+          <option value="lock">Mouse look (pointer lock) – recommended</option>
+          <option value="keys">Arrow keys + hold right mouse button</option>
+        </select>
+      </label>
+      <button id="btn-reset" class="btn small ghost" type="button">Reset all settings</button>
+    </section>
+
+    <section id="t-how" class="panel hidden">
+      <div class="keys">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</div>
+        <div><kbd>Shift</kbd> run &nbsp; <kbd>Space</kbd> jump (hop onto low crates!)</div>
+        <div><b>Mouse</b> look &nbsp; <b>Left click</b> (or <kbd>F</kbd>) fire</div>
+        <div><kbd>R</kbd> <b>answer a question to get ammo ⚡</b></div>
+        <div>In a question: <kbd>1</kbd>–<kbd>4</kbd> or <kbd>A</kbd>–<kbd>D</kbd> or click</div>
+        <div><kbd>Tab</kbd> hold: scoreboard &nbsp; <kbd>Esc</kbd> pause</div>
+      </div>
+      <p class="hint">Correct answers give lots of ammo. Wrong answers show you the right answer so you can learn it. Three correct in a row gives bonus ammo!</p>
+    </section>
+
+    <footer class="foot">EduStrike · <span id="ver"></span> · all graphics and sounds are made by code – no downloads, no copyrighted assets.</footer>
+  </div>
+</div>
+
+<!-- ======================= GAME ======================= -->
+<div id="screen-game" class="screen hidden">
+  <div id="gl-wrap"></div>
+
+  <div id="hud">
+    <div id="dmg-flash"></div>
+    <div id="shield"></div>
+    <div id="hit-dir"><i></i></div>
+
+    <div id="hud-score">
+      <div class="team blue"><span id="sc-blue">0</span></div>
+      <div class="mid"><div id="sc-time">5:00</div><div id="sc-target"></div></div>
+      <div class="team red"><span id="sc-red">0</span></div>
+    </div>
+    <div id="fps"></div>
+    <canvas id="radar" width="132" height="132"></canvas>
+    <div id="feed"></div>
+
+    <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+    <div id="hitmarker"></div>
+    <div id="toast"></div>
+
+    <div id="hp"><div class="lbl">❤ SHIELD</div><div class="bar"><div id="hp-fill"></div></div><div id="hp-text">100</div></div>
+    <div id="ammo"><div class="lbl">⚡ AMMO</div><div id="ammo-num">12</div><div id="ammo-hint"></div><div id="streak"></div></div>
+  </div>
+
+  <!-- ready -->
+  <div id="ov-ready" class="overlay">
+    <div class="card">
+      <h2>Ready, Cadet?</h2>
+      <p class="big">Tag the Red Team before time runs out!</p>
+      <div class="keys small">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp; <kbd>Shift</kbd> run &nbsp; <kbd>Space</kbd> jump</div>
+        <div id="ready-look">Mouse = look &amp; aim · Left click = fire</div>
+        <div><kbd>R</kbd> = <b>answer a question → get ammo ⚡</b></div>
+      </div>
+      <button id="btn-ready" class="btn big" type="button">▶ CLICK TO START</button>
+      <button id="btn-ready-quit" class="btn small ghost" type="button">Back to menu</button>
+    </div>
+  </div>
+
+  <div id="ov-count" class="overlay clear hidden"><div id="count-num">3</div></div>
+
+  <div id="ov-pause" class="overlay hidden">
+    <div class="card">
+      <h2>⏸ Paused</h2>
+      <button id="btn-resume" class="btn big" type="button">▶ Resume</button>
+      <button id="btn-quit" class="btn small ghost" type="button">Quit to menu</button>
+    </div>
+  </div>
+
+  <div id="ov-death" class="overlay clear hidden">
+    <div class="deathcard"><div id="death-text">Tagged!</div><div class="sub">Back in <span id="death-count">3</span>…</div></div>
+  </div>
+
+  <!-- question panel -->
+  <div id="qp" class="hidden">
+    <div class="qcard">
+      <div class="qhead"><span id="qp-subject" class="qsub"></span><span id="qp-meta" class="qmeta"></span></div>
+      <div id="qp-text" class="qtext"></div>
+      <div id="qp-opts" class="qopts"></div>
+      <div id="qp-timer"><div id="qp-fill"></div></div>
+      <div id="qp-fb" class="qfb hidden"></div>
+      <div class="qfoot"><span id="qp-reward"></span><span class="qesc">Esc = cancel</span></div>
+    </div>
+  </div>
+
+  <div id="scoreboard" class="hidden"><div id="sb-body"></div></div>
+
+  <!-- end of match -->
+  <div id="ov-end" class="overlay hidden">
+    <div class="card wide">
+      <div id="end-title" class="end-title">Victory!</div>
+      <div id="end-score" class="end-score"></div>
+      <div id="end-stats" class="stats"></div>
+      <div id="end-subj" class="subj"></div>
+      <div id="end-review" class="review"></div>
+      <div class="btnrow">
+        <button id="btn-again" class="btn big" type="button">↻ Play again</button>
+        <button id="btn-menu" class="btn small ghost" type="button">Menu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="config.js"></script>
+<script src="questions.js"></script>
+<script src="audio.js"></script>
+<script src="quiz.js"></script>
+<script src="world.js"></script>
+<script src="bots.js"></script>
+<script src="game.js"></script>
+<script src="gate.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
