@@ -146,8 +146,10 @@
           <option value="low">Low – fastest (best for Chromebooks)</option>
           <option value="medium">Medium</option>
           <option value="high">High – shadows (strong laptops)</option>
+          <option value="fancy">✨ Fancy – cartoon look (strong laptops only)</option>
         </select>
       </label>
+      <p class="hint">Fancy looks nicer but needs a strong computer. If it gets slow, the game switches itself to a faster look.</p>
       <label class="row check"><input id="set-fps" type="checkbox"> Show FPS (speed) number</label>
       <label class="row check"><input id="set-aim" type="checkbox"> Aim assist (bigger target area)</label>
       <label class="row check"><input id="set-radar" type="checkbox"> Radar shows enemies</label>
@@ -221,7 +223,7 @@
   <div id="ov-ready" class="overlay">
     <div class="card">
       <h2>Ready, Cadet?</h2>
-      <p class="big">Tag the Red Team before time runs out!</p>
+      <p id="ready-goal" class="big">Tag the Red Team before time runs out!</p>
       <div class="keys small">
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp; <kbd>Shift</kbd> run &nbsp; <kbd>Space</kbd> jump</div>
         <div id="ready-look">Mouse = look &amp; aim · Left click = fire</div>
@@ -237,6 +239,7 @@
   <div id="ov-pause" class="overlay hidden">
     <div class="card">
       <h2>⏸ Paused</h2>
+      <p id="pause-net" class="hint hidden">⚠️ The class match keeps going while you are paused!</p>
       <button id="btn-resume" class="btn big" type="button">▶ Resume</button>
       <button id="btn-quit" class="btn small ghost" type="button">Quit to menu</button>
     </div>
@@ -267,6 +270,7 @@
       <div id="end-score" class="end-score"></div>
       <div id="end-stats" class="stats"></div>
       <div id="end-subj" class="subj"></div>
+      <div id="end-board" class="endboard hidden"></div>
       <div id="end-review" class="review"></div>
       <div class="btnrow">
         <button id="btn-again" class="btn big" type="button">↻ Play again</button>

@@ -9,7 +9,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  let link = null, timer = 0, cb = {}, rtt = 0, handlers = {};
+  let link = null, timer = 0, cb = {}, rtt = 0, handlers = {}, lastMsg = 0;
   const S = { connected: false, code: '', me: null, roster: [], phase: 'lobby', lock: false };
 
   function reset() { S.connected = false; S.code = ''; S.me = null; S.roster = []; S.phase = 'lobby'; S.lock = false; rtt = 0; }
@@ -45,10 +45,17 @@
       },
       onData: function (m) {
         if (!m || typeof m.t !== 'string') return;
+        lastMsg = Date.now();
         if (m.t === 'welcome') {
           S.connected = true; S.me = { id: m.id, name: m.name, team: m.team };
           S.roster = m.list || []; S.phase = m.phase; S.lock = !!m.lock; S.code = m.code || S.code;
-          timer = setInterval(function () { if (link) link.send({ t: 'ping', ts: performance.now(), rtt: rtt }); }, 2000);
+          lastMsg = Date.now();
+          // every 2 s: measure speed, and check the teacher is still there (silence for 8 s = connection lost)
+          timer = setInterval(function () {
+            if (!link) return;
+            if (Date.now() - lastMsg > 8000) { end('lost'); return; }
+            link.send({ t: 'ping', ts: performance.now(), rtt: rtt });
+          }, 2000);
           if (cb.onJoined) cb.onJoined();
           if (cb.onState) cb.onState();
         } else if (m.t === 'roster') {

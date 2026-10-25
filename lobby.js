@@ -38,6 +38,7 @@
       b.disabled = S.lock || S.phase !== 'lobby';
     });
     $('room-lock').classList.toggle('hidden', !S.lock);
+    $('room-hint').textContent = S.phase === 'lobby' ? 'Pick your team. Your teacher will press START.' : '⚔️ A match is running. You will join the next one!';
     $('room-count').textContent = S.roster.length + (S.roster.length === 1 ? ' student' : ' students') + ' in the room';
     const ms = ES.session.rtt();
     $('room-ping').textContent = ms > 0 ? 'Connection: ' + pingDot(ms) + ' ' + ms + ' ms' : 'Connection: checking…';
@@ -78,5 +79,6 @@
     setInterval(function () { if (ES.session.state.connected) render(); }, 2500);   // keeps the ping number fresh
   }
 
-  ES.lobby = { init: init, show: show, leave: leave, onEnd: null };
+  function showWait() { step('wait'); say(''); render(); }
+  ES.lobby = { init: init, show: show, showWait: showWait, leave: leave, onEnd: null };
 })();

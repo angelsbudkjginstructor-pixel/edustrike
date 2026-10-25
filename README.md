@@ -46,3 +46,21 @@ Stage 2: load questions from a Google Sheet + simple results export · Stage 3: 
 ## Files
 `index.html`, `style.css`, `js/` (config, questions, quiz, world, bots, game, audio, main) and `js/vendor/three.min.js` (Three.js r160, MIT licence).
 To change the sample questions, edit `js/questions.js`. To change bot strength or speed, edit `js/config.js`.
+
+## Class match (Stage 3B)
+
+The teacher's page (`teacher.html`) is the **referee**. Keep it open during the match.
+
+1. Open `teacher.html`, turn the game ON, press **OPEN CLASS ROOM**. A 5-letter code and a link appear.
+2. Students open the link (or press **JOIN CLASS GAME** and type the code), enter a name and pick Blue or Red.
+3. The teacher can move anybody, mix the teams or lock them, then sets the match options and presses **START MATCH**.
+4. Empty spots are filled with bots. Students click START on their own screen; the countdown begins when everybody is ready (or after 25 s).
+5. At the end, everybody sees the class results. **Back to waiting room** lets you play again.
+
+How it works (for developers): students connect to the teacher page with WebRTC (PeerJS free introduction service). `match.js` runs the bots, health, score and clock; `session.js`/`lobby.js` are the student side; `game.js` has a "net mode" that follows 15 snapshots per second from the referee. A student who leaves is replaced by a bot. While a student answers a question they take half damage.
+
+## Graphics levels (Stage 3C)
+Menu → Graphics has Low (default, smoothest), Medium, High and **✨ Fancy** (cartoon look: round characters with outlines,
+flowers, trees, hills, clouds, glowing lasers). Fancy is never switched on by itself. If a computer cannot keep up (under
+28 FPS for about 4 seconds) the game quietly switches to a lighter look and remembers Low for next time.
+In a class match the teacher can choose **Graphics for everyone → Force Low** so every student laptop runs the light version.

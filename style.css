@@ -207,3 +207,11 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 .rrow { display: flex; justify-content: space-between; padding: 6px 12px; font-weight: 700; border-bottom: 1px solid #e4ebf7; }
 .rrow.me { background: #fff3c4; }
 .roomfoot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 14px; font-weight: 700; color: #4a5a78; }
+
+.endboard { display: flex; gap: 12px; margin: 14px 0; text-align: left; }
+.endboard .sbcol { background: #f4f7fd; border-radius: 12px; overflow: hidden; padding-bottom: 6px; }
+.endboard .sbcol h3 { color: #fff; border-radius: 0; margin: 0 0 4px; }
+.endboard .sbrow { color: var(--ink); font-size: 16px; }
+.endboard .sbrow.me { background: #fff3c4; }
+#pause-net { color: #8a1a0b; background: #ffe3e0; border-radius: 10px; padding: 8px 12px; }
+@media (max-width: 620px) { .endboard { flex-direction: column; } }

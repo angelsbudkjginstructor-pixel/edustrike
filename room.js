@@ -72,7 +72,7 @@
           if (p) return;
           if (players.length >= MAX) { host.send(conn, { t: 'full' }); setTimeout(function () { host.closeConn(conn); }, 300); return; }
           const c = counts();
-          p = { id: nextId++, conn: conn, name: uniqueName(cleanName(m.name)), team: c[0] <= c[1] ? 0 : 1, rtt: 0, joined: Date.now() };
+          p = { id: nextId++, conn: conn, name: uniqueName(cleanName(m.name)), team: c[0] <= c[1] ? 0 : 1, rtt: 0, joined: Date.now(), lastSeen: Date.now() };
           players.push(p);
           host.send(conn, { t: 'welcome', id: p.id, code: code, list: publicList(), phase: phase, lock: lockTeams, name: p.name, team: p.team });
           if (extra.join) extra.join(p);
@@ -80,6 +80,7 @@
           return;
         }
         if (!p) return;                                    // must say hello first
+        p.lastSeen = Date.now();
         if (m.t === 'team') {
           if (lockTeams || phase !== 'lobby') { host.send(conn, { t: 'roster', list: publicList(), phase: phase, lock: lockTeams }); return; }
           if (m.team === 0 || m.team === 1) { p.team = m.team; changed(); }
@@ -92,7 +93,16 @@
       }
     });
     // refresh the list now and then so the "ping" numbers stay fresh
-    clearInterval(open.tick); open.tick = setInterval(function () { if (host && players.length) changed(); }, 3000);
+    clearInterval(open.tick);
+    open.tick = setInterval(function () {
+      if (!host) return;
+      // a student who has been silent for 10 s has lost connection (closed laptop, WiFi gone): remove them
+      const now = Date.now();
+      players.slice().forEach(function (p) {
+        if (now - p.lastSeen > 10000) { players.splice(players.indexOf(p), 1); if (extra.leave) extra.leave(p); host.closeConn(p.conn); changed(); }
+      });
+      if (players.length) changed();
+    }, 3000);
   }
 
   function close() {

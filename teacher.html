@@ -46,6 +46,12 @@
   .r-tools .btn.red { background: linear-gradient(#ff9a8d, #e0301e); color: #fff; box-shadow: 0 3px 0 #9a1d10; }
   .r-say { display: flex; gap: 8px; margin-top: 12px; }
   .r-say input { flex: 1; }
+  .r-h { margin: 18px 0 8px; font-size: 19px; }
+  .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .r-grid label { margin: 8px 0 0; font-size: 14px; }
+  .r-grid select { width: 100%; margin-top: 4px; font: inherit; font-size: 17px; padding: 8px 10px; border-radius: 10px; border: 2px solid #c9d7ee; background: #f7faff; color: #12203a; }
+  .l-bar { display: flex; justify-content: space-between; align-items: center; background: #12203a; color: #fff; border-radius: 12px; padding: 10px 14px; font-weight: 900; font-size: 20px; gap: 10px; flex-wrap: wrap; }
+  .l-bar #l-ready { font-size: 14px; font-weight: 700; opacity: .85; }
   .r-note { margin-top: 12px; font-size: 14px; font-weight: 600; color: #5a6a88; background: #f4f7fd; border-radius: 10px; padding: 10px 12px; }
   @media (max-width: 620px) { .r-teams { flex-direction: column; } .r-code .big { font-size: 54px; letter-spacing: 8px; } }
 </style>
@@ -91,23 +97,52 @@
       <div class="r-teams"><div class="r-col" id="r-team0"></div><div class="r-col" id="r-team1"></div></div>
       <div class="t-small" id="r-count" style="text-align:left"></div>
 
-      <div class="r-tools">
+
+      <div class="r-tools" id="r-tools1">
         <button id="r-mix" class="btn dark" type="button">🔀 Mix teams</button>
         <label style="margin:0;font-weight:800;display:flex;align-items:center;gap:6px"><input id="r-lock" type="checkbox" style="width:20px;height:20px"> 🔒 Lock teams</label>
         <span style="flex:1"></span>
         <button id="r-close" class="btn red" type="button">Close room</button>
       </div>
       <div class="r-say"><input id="r-say" type="text" maxlength="120" placeholder="Send a message to every student's screen"><button id="r-send" class="btn dark" type="button" style="padding:9px 14px">📣 Send</button></div>
-      <div class="r-note">🧪 <b>Connection test:</b> each student shows a dot — 🟢 fast, 🟡 ok, 🔴 slow, ⚪ checking. The ▶ START MATCH button is coming in the next update.</div>
+      <div id="r-setup">
+        <h3 class="r-h">⚔️ Match settings</h3>
+        <div class="r-grid">
+          <label>Players per team<select id="m-size"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>8</option><option>10</option><option>12</option><option>15</option></select></label>
+          <label>Win by tagging<select id="m-target"><option>10</option><option selected>15</option><option>20</option><option>30</option><option>50</option></select></label>
+          <label>Time limit (minutes)<select id="m-min"><option>3</option><option selected>5</option><option>8</option><option>10</option><option>15</option></select></label>
+          <label>Graphics for everyone<select id="m-gfx"><option value="" selected>Each student chooses</option><option value="low">Force Low (smoothest)</option></select></label>
+          <label>Bot skill<select id="m-diff"><option value="easy">😀 Easy</option><option value="normal" selected>😎 Normal</option><option value="hard">🔥 Hard</option></select></label>
+        </div>
+        <button id="r-start" class="btn on t-open" type="button">▶ START MATCH</button>
+        <div class="t-small" style="margin-top:8px">Empty spots in each team are filled with bots. Keep this page open during the match – it is the referee!</div>
+        <div id="r-start-err" class="t-msg bad"></div>
+      </div>
+
+      <div id="r-live" class="hidden">
+        <h3 class="r-h">⚔️ Match <span id="l-state"></span></h3>
+        <div class="l-bar"><span id="l-time">0:00</span><span id="l-score"></span><span id="l-ready"></span></div>
+        <div class="r-teams"><div class="r-col" id="l-team0"></div><div class="r-col" id="l-team1"></div></div>
+        <div class="r-tools">
+          <button id="r-end" class="btn red" type="button">⏹ End match now</button>
+          <button id="r-back" class="btn on hidden" type="button">↩ Back to waiting room</button>
+        </div>
+      </div>
+
+      <div class="r-note">🧪 Each student shows a dot — 🟢 fast, 🟡 ok, 🔴 slow, ⚪ checking. During a match students take half damage while they answer a question.</div>
     </div>
   </div>
 </div>
 
+<script src="three.min.js"></script>
 <script src="config.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="gate.js"></script>
 <script src="net.js"></script>
 <script src="room.js"></script>
+<script src="world.js"></script>
+<script src="bots.js"></script>
+<script src="match.js"></script>
 <script src="teacher.js"></script>
 <script src="teacher-room.js"></script>
 </body>

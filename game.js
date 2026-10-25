@@ -24,6 +24,11 @@
   let radarBase, radarCtx, radarT = 0, hudT = 0;
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
   let toastT = 0, closeTimer = 0, relockTimer = 0;
+  let sunLight = null, rings = [], ringI = 0, outlineMeshes = [];
+  let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
+  const myTeam = function () { return NET ? NET.team : 0; };
+  const r2 = function (v) { return Math.round(v * 100) / 100; };
+  const netSend = function (m) { return ES.session ? ES.session.send(m) : false; };
   const cache = {};
 
   function setText(id, v) { if (cache[id] !== v) { cache[id] = v; const el = $(id); if (el) el.textContent = v; } }
@@ -33,10 +38,13 @@
   /* =====================================================================
      START / STOP
      ===================================================================== */
-  G.start = function () {
+  G.start = function (opts) {
     if (G.active) G.stop();
     st = JSON.parse(JSON.stringify(ES.settings));
+    NET = (opts && opts.net) ? { team: opts.net.team, you: opts.net.you, byEid: {}, sendT: 0, cdLast: 99, hostPh: 'wait', rows: null } : null;
+    if (opts && opts.net && opts.net.gfx && ES.GFX[opts.net.gfx]) st.gfx = opts.net.gfx;      // the teacher can make everybody use one graphics level
     gfx = ES.GFX[st.gfx] || ES.GFX.low;
+    G.downgraded = false; outlineMeshes = []; rings = []; ringI = 0;
 
     const wrap = $('gl-wrap');
     wrap.innerHTML = '';
@@ -61,9 +69,9 @@
     const skyTex = new T.CanvasTexture(sc);
     if (T.SRGBColorSpace) skyTex.colorSpace = T.SRGBColorSpace;
     scene.background = skyTex;
-    scene.fog = new T.Fog(0xcfeaff, 22, gfx.fog);
+    scene.fog = new T.Fog(0xcfeaff, gfx.fancy ? 45 : 22, gfx.fog);
     scene.add(new T.HemisphereLight(0xffffff, 0x8fae7a, 2.1));
-    const sun = new T.DirectionalLight(0xfff4e0, 1.6);
+    const sun = sunLight = new T.DirectionalLight(0xfff4e0, 1.6);
     sun.position.set(25, 45, 15);
     if (gfx.shadows) {
       sun.castShadow = true;
@@ -72,33 +80,45 @@
     }
     scene.add(sun);
 
-    camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, 140);
+    camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, gfx.fancy ? 240 : 140);
     scene.add(camera);
 
-    world = ES.buildWorld(scene);
+    world = ES.buildWorld(scene, { fancy: !!gfx.fancy });
     buildShared();
     buildGun();
     buildEffects();
 
     /* ---- create the fighters ---- */
     ents = [];
-    player = makeEnt(0, st.name || 'Cadet', true, 'normal');
-    ents.push(player);
-    const names = [ES.BOT_NAMES[0].slice(), ES.BOT_NAMES[1].slice()];
-    for (let i = 1; i < st.botsPerTeam; i++) ents.push(makeEnt(0, names[0].shift() || 'Ally' + i, false, 'normal'));
-    for (let i = 0; i < st.botsPerTeam; i++) ents.push(makeEnt(1, names[1].shift() || 'Foe' + i, false, st.diff));
-    const used = [[], []];
-    ents.forEach(function (e) {
-      if (!e.isPlayer) { e.mesh = buildBotMesh(e); scene.add(e.mesh); }
-      placeAtSpawn(e, used);
-    });
+    if (NET) {
+      /* class match: the referee (teacher's page) told us who is playing */
+      opts.net.ents.forEach(function (d) {
+        const e = makeEnt(d.team, d.name, d.eid === NET.you, 'normal');
+        e.eid = d.eid; e.isBot = false; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
+        NET.byEid[d.eid] = e; ents.push(e);
+        if (e.isPlayer) player = e;
+      });
+      ents.forEach(function (e) { if (!e.isPlayer) { e.mesh = buildBotMesh(e); e.mesh.visible = false; scene.add(e.mesh); } });
+      player.x = opts.net.x; player.z = opts.net.z; player.y = 0; player.yaw = opts.net.yaw; yaw = opts.net.yaw; pitch = 0;
+    } else {
+      player = makeEnt(0, st.name || 'Cadet', true, 'normal');
+      ents.push(player);
+      const names = [ES.BOT_NAMES[0].slice(), ES.BOT_NAMES[1].slice()];
+      for (let i = 1; i < st.botsPerTeam; i++) ents.push(makeEnt(0, names[0].shift() || 'Ally' + i, false, 'normal'));
+      for (let i = 0; i < st.botsPerTeam; i++) ents.push(makeEnt(1, names[1].shift() || 'Foe' + i, false, st.diff));
+      const used = [[], []];
+      ents.forEach(function (e) {
+        if (!e.isPlayer) { e.mesh = buildBotMesh(e); scene.add(e.mesh); }
+        placeAtSpawn(e, used);
+      });
+    }
 
     quiz = ES.createQuiz(st);
     G.world = world; G.ents = ents; G.player = player;   // the bot brains read these
 
     S = {
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
-      timeLeft: st.minutes * 60, score: [0, 0], target: st.targetKills,
+      total: (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
@@ -123,7 +143,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false;
+    G.active = false; NET = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -178,6 +198,78 @@
     return geo;
   }
 
+  /* Fancy: merge round shapes (capsules, balls, cylinders) into one vertex-coloured geometry */
+  function mergeParts(list) {
+    const pos = [], nor = [], col = [], tmp = new T.Color();
+    list.forEach(function (b) {
+      let g = b.g;
+      if (b.rx) g.rotateX(b.rx);
+      if (b.sx || b.sy || b.sz) g.scale(b.sx || 1, b.sy || 1, b.sz || 1);
+      g = g.toNonIndexed();
+      const p = g.attributes.position.array, n = g.attributes.normal.array;
+      tmp.set(b.c);
+      for (let i = 0; i < p.length; i += 3) {
+        pos.push(p[i] + (b.x || 0), p[i + 1] + (b.y || 0), p[i + 2] + (b.z || 0)); nor.push(n[i], n[i + 1], n[i + 2]); col.push(tmp.r, tmp.g, tmp.b);
+      }
+      g.dispose();
+    });
+    const geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+    return geo;
+  }
+  /* the same shape, pushed outward a little: drawn black from the inside gives a cartoon outline */
+  function outlineOf(geo, amt) {
+    const o = geo.clone(), p = o.attributes.position.array, n = o.attributes.normal.array;
+    for (let i = 0; i < p.length; i += 3) { p[i] += n[i] * amt; p[i + 1] += n[i + 1] * amt; p[i + 2] += n[i + 2] * amt; }
+    o.attributes.position.needsUpdate = true;
+    return o;
+  }
+
+  /* Fancy: cartoon fighter shapes shared by everybody (so 30 fighters still cost little) */
+  function buildFancyShared() {
+    const skin = 0xffd6b0, dark = 0x2b3550, boot = 0x1a2035;
+    shared.toon = ES.toonGradient(T);
+    [0, 1].forEach(function (team) {
+      const c = ES.TEAMS[team].color, c2 = team === 0 ? 0x1f5fcc : 0xcc3a22;
+      const body = mergeParts([
+        { g: new T.CapsuleGeometry(0.25, 0.3, 3, 10), y: 1.08, c: c },                                     // round body
+        { g: new T.CylinderGeometry(0.265, 0.265, 0.07, 12), y: 0.9, c: dark },                            // belt
+        { g: new T.SphereGeometry(0.25, 12, 9), y: 1.57, c: skin },                                         // head
+        { g: new T.SphereGeometry(0.285, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), y: 1.6, c: c },         // helmet
+        { g: new T.BoxGeometry(0.4, 0.05, 0.14), y: 1.63, z: -0.27, c: c2 },                                // helmet peak
+        { g: new T.SphereGeometry(0.035, 6, 5), x: -0.085, y: 1.54, z: -0.225, c: 0x1a2035 },               // eyes
+        { g: new T.SphereGeometry(0.035, 6, 5), x: 0.085, y: 1.54, z: -0.225, c: 0x1a2035 },
+        { g: new T.SphereGeometry(0.035, 6, 5), x: -0.14, y: 1.48, z: -0.2, sy: 0.7, c: 0xff9eb0 },         // cheeks
+        { g: new T.SphereGeometry(0.035, 6, 5), x: 0.14, y: 1.48, z: -0.2, sy: 0.7, c: 0xff9eb0 },
+        { g: new T.CylinderGeometry(0.02, 0.02, 0.2, 5), y: 1.98, c: 0xdddddd },                            // antenna
+        { g: new T.SphereGeometry(0.06, 8, 6), y: 2.1, c: 0xffd23f },
+        { g: new T.BoxGeometry(0.34, 0.42, 0.16), y: 1.1, z: 0.27, c: c2 },                                 // backpack
+        { g: new T.BoxGeometry(0.26, 0.06, 0.1), y: 1.28, z: 0.34, c: 0xffd23f },
+        { g: new T.CapsuleGeometry(0.07, 0.24, 2, 6), rx: Math.PI / 2, x: 0.3, y: 1.15, z: -0.12, c: c },   // right arm holds the blaster
+        { g: new T.SphereGeometry(0.075, 7, 5), x: 0.3, y: 1.15, z: -0.3, c: skin },
+        { g: new T.BoxGeometry(0.09, 0.12, 0.42), x: 0.3, y: 1.1, z: -0.38, c: 0x2a2f3a },                  // blaster
+        { g: new T.BoxGeometry(0.1, 0.03, 0.2), x: 0.3, y: 1.17, z: -0.36, c: team === 0 ? 0x7fd0ff : 0xff9a6d },
+        { g: new T.SphereGeometry(0.05, 6, 5), x: 0.3, y: 1.1, z: -0.62, c: 0xffe14d }
+      ]);
+      shared['fbody' + team] = body;
+      shared['fout' + team] = outlineOf(body, 0.032);
+      // left arm swings: pivot at the shoulder
+      shared['farm' + team] = mergeParts([
+        { g: new T.CapsuleGeometry(0.07, 0.26, 2, 6), y: -0.2, c: c },
+        { g: new T.SphereGeometry(0.075, 7, 5), y: -0.42, c: skin }
+      ]);
+    });
+    // legs swing: pivot at the hip
+    shared.fleg = mergeParts([
+      { g: new T.CapsuleGeometry(0.095, 0.4, 2, 6), y: -0.32, c: dark },
+      { g: new T.BoxGeometry(0.2, 0.13, 0.32), y: -0.74, z: -0.04, c: boot }
+    ]);
+    shared.fMat = new T.MeshToonMaterial({ vertexColors: true, gradientMap: shared.toon });
+    shared.outMat = new T.MeshBasicMaterial({ color: 0x0c1220, side: T.BackSide });
+  }
+
   /* Geometry/textures that all bots share (so 12 bots cost almost nothing extra) */
   function buildShared() {
     shared = {};
@@ -207,6 +299,7 @@
     q2.fillStyle = '#ff8a1f'; q2.font = 'bold 44px sans-serif'; q2.textAlign = 'center'; q2.textBaseline = 'middle'; q2.fillText('?', 32, 35);
     shared.bubbleTex = new T.CanvasTexture(qc);
     shared.bubbleMat = new T.SpriteMaterial({ map: shared.bubbleTex, depthTest: false });
+    if (gfx.fancy) buildFancyShared();
   }
 
   function makeNameSprite(name, css) {
@@ -221,7 +314,27 @@
     return spr;
   }
 
+  function buildFancyMesh(e) {
+    const root = new T.Group();
+    const bodyMat = new T.MeshToonMaterial({ vertexColors: true, gradientMap: shared.toon });
+    const body = new T.Mesh(shared['fbody' + e.team], bodyMat);
+    const out = new T.Mesh(shared['fout' + e.team], shared.outMat);
+    out.userData.shared = true; body.add(out); outlineMeshes.push(out);
+    const legL = new T.Mesh(shared.fleg, shared.fMat), legR = new T.Mesh(shared.fleg, shared.fMat);
+    legL.position.set(-0.12, 0.84, 0); legR.position.set(0.12, 0.84, 0);
+    const armL = new T.Mesh(shared['farm' + e.team], shared.fMat); armL.position.set(-0.3, 1.32, 0);
+    [legL, legR, armL].forEach(function (m) { m.userData.shared = true; });
+    root.add(body, legL, legR, armL);
+    if (gfx.shadows) { body.castShadow = true; legL.castShadow = legR.castShadow = true; }
+    const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.75; bubble.visible = false; bubble.userData.shared = true;
+    root.add(bubble);
+    if (e.team === myTeam()) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css); nm.position.y = 2.4; root.add(nm); }
+    root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble };
+    return root;
+  }
+
   function buildBotMesh(e) {
+    if (gfx.fancy) return buildFancyMesh(e);
     const root = new T.Group();
     const bodyMat = new T.MeshLambertMaterial({ vertexColors: true });
     const body = new T.Mesh(shared['body' + e.team], bodyMat);
@@ -234,7 +347,7 @@
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.7; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === 0) { const nm = makeNameSprite(e.name, ES.TEAMS[0].css); nm.position.y = 2.2; root.add(nm); }
+    if (e.team === myTeam()) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css); nm.position.y = 2.2; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, bubble: bubble };
     return root;
   }
@@ -246,12 +359,17 @@
       m.position.set(x, y, z); m.renderOrder = 20; gun.add(m); return m;
     };
     mk(0.075, 0.1, 0.38, 0x2a3550, 0, 0, 0);
-    mk(0.08, 0.03, 0.22, ES.TEAMS[0].color, 0, 0.06, -0.04);
+    mk(0.08, 0.03, 0.22, ES.TEAMS[myTeam()].color, 0, 0.06, -0.04);
     mk(0.04, 0.04, 0.2, 0x1a2035, 0, 0.015, -0.28);
     mk(0.05, 0.12, 0.07, 0x1a2035, 0, -0.1, 0.1);
     mk(0.05, 0.05, 0.03, 0xffe14d, 0, 0.015, -0.39);
     muzzle = new T.Mesh(new T.PlaneGeometry(0.3, 0.3), new T.MeshBasicMaterial({ color: 0xffe98a, transparent: true, opacity: 0.95, depthTest: false, side: T.DoubleSide }));
     muzzle.position.set(0, 0.015, -0.46); muzzle.renderOrder = 21; muzzle.visible = false; gun.add(muzzle);
+    if (gfx.fancy) {                                   // glowing energy strip + bigger muzzle flash
+      const glow = new T.Mesh(new T.BoxGeometry(0.03, 0.03, 0.26), new T.MeshBasicMaterial({ color: myTeam() === 0 ? 0x7fe3ff : 0xffb08a, depthTest: false }));
+      glow.position.set(0.0, 0.085, -0.04); glow.renderOrder = 22; gun.add(glow);
+      muzzle.scale.set(1.5, 1.5, 1);
+    }
     gun.scale.set(0.55, 0.55, 0.55);
     gun.position.set(0.2, -0.18, -0.5);
     gun.rotation.set(0, 0.04, 0);
@@ -260,17 +378,24 @@
 
   function buildEffects() {
     tracers = []; sparks = []; tracerI = 0;
-    const tg = new T.BoxGeometry(0.04, 0.04, 1);
+    const tg = new T.BoxGeometry(gfx.fancy ? 0.085 : 0.04, gfx.fancy ? 0.085 : 0.04, 1);
     for (let i = 0; i < 14; i++) {
-      const m = new T.Mesh(tg, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+      const m = new T.Mesh(tg, new T.MeshBasicMaterial(gfx.fancy ? { color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true, opacity: 0 }));
       m.visible = false; m.userData.shared = true; scene.add(m);
       tracers.push({ mesh: m, life: 0 });
     }
     shared.tracerGeo = tg;
+    if (gfx.fancy) {                                   // pool of flash rings that pop where a laser hits
+      shared.ringGeo = new T.RingGeometry(0.12, 0.2, 18);
+      for (let i = 0; i < 8; i++) {
+        const m = new T.Mesh(shared.ringGeo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+        m.visible = false; m.userData.shared = true; scene.add(m); rings.push({ mesh: m, life: 0 });
+      }
+    }
     const sg = new T.BoxGeometry(0.1, 0.1, 0.1);
     shared.sparkGeo = sg;
-    for (let i = 0; i < 28; i++) {
-      const m = new T.Mesh(sg, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+    for (let i = 0; i < (gfx.fancy ? 70 : 28); i++) {
+      const m = new T.Mesh(sg, new T.MeshBasicMaterial(gfx.fancy ? { color: 0xffffff, transparent: true, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true }));
       m.visible = false; m.userData.shared = true; scene.add(m);
       sparks.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0 });
     }
@@ -388,6 +513,11 @@
   };
 
   function burst(x, y, z, color, n) {
+    if (gfx.fancy) {
+      const r = rings[ringI++ % rings.length]; r.life = 0.32; r.mesh.position.set(x, y, z); r.mesh.visible = true; r.mesh.material.color.setHex(color); r.mesh.material.opacity = 0.9; r.mesh.scale.set(1, 1, 1);
+      r.mesh.lookAt(camera.position);
+      n = n * 3;
+    }
     n = Math.min(n, gfx.sparks);
     let k = 0;
     for (let i = 0; i < sparks.length && k < n; i++) {
@@ -395,7 +525,7 @@
       if (s.life > 0) continue;
       s.life = 0.35 + Math.random() * 0.2; k++;
       s.mesh.position.set(x, y, z); s.mesh.visible = true;
-      s.mesh.material.color.setHex(color); s.mesh.material.opacity = 1;
+      s.mesh.material.color.setHex(gfx.fancy && k % 3 === 0 ? 0xffffff : color); s.mesh.material.opacity = 1;
       s.vx = (Math.random() - 0.5) * 5; s.vy = Math.random() * 4 + 1; s.vz = (Math.random() - 0.5) * 5;
     }
   }
@@ -418,17 +548,18 @@
     const l = Math.sqrt(dx * dx + dy * dy + dz * dz); dx /= l; dy /= l; dz /= l;
     const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
     const res = G.castShot(player, ox, oy, oz, dx, dy, dz, 90, st.aimAssist ? 1.7 : 1);
+    if (NET) netSend({ t: 'shot', ox: r2(ox), oy: r2(oy), oz: r2(oz), ex: r2(ox + dx * res.t), ey: r2(oy + dy * res.t), ez: r2(oz + dz * res.t), tid: res.target ? res.target.eid : -1, h: res.head ? 1 : 0 });
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-    G.addTracer(ox + dx * 0.6 + rx * 0.22, oy + dy * 0.6 - 0.18, oz + dz * 0.6 + rz * 0.22, ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, 0);
+    G.addTracer(ox + dx * 0.6 + rx * 0.22, oy + dy * 0.6 - 0.18, oz + dz * 0.6 + rz * 0.22, ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, myTeam());
     ES.audio.sfx('shoot', 0.9);
     muzzle.visible = true; S.muzzleT = 0.05; S.recoil = 1;
     if (res.target) {
       S.stats.hits++;
       if (res.head) S.stats.heads++;
-      const hit = G.damage(res.target, res.head ? P.headDamage : P.damage, player, res.head);
+      const hit = NET ? (res.target.alive && res.target.protT <= 0) : G.damage(res.target, res.head ? P.headDamage : P.damage, player, res.head);
       if (hit) {
         S.hitMark = 0.18; S.hitHead = res.head;
-        burst(ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, ES.TEAMS[1].color, 5);
+        burst(ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, ES.TEAMS[1 - myTeam()].color, 5);
         if (res.target.alive) ES.audio.sfx(res.head ? 'headshot' : 'hit');
       }
     } else {
@@ -564,6 +695,10 @@
     ES.audio.unlock();
     ES.audio.music.start('play');
     show('ov-ready', false);
+    if (NET) {                               // class match: tell the referee we are ready and wait for the countdown
+      S.phase = NET.hostPh === 'play' ? 'play' : (NET.hostPh === 'count' ? 'count' : 'wait');
+      $('count-num').textContent = '⏳'; show('ov-count', S.phase !== 'play'); netSend({ t: 'ready' }); tryLock(); return;
+    }
     S.phase = 'count'; S.countT = 3.2; S.lastCount = 4;
     show('ov-count', true);
     tryLock();
@@ -578,7 +713,8 @@
     show('ov-death', false); show('ov-pause', false);
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { /* ignore */ }
     let outcome = 'draw';
-    if (S.score[0] > S.score[1]) outcome = 'win'; else if (S.score[1] > S.score[0]) outcome = 'lose';
+    const mine = S.score[myTeam()], other = S.score[1 - myTeam()];
+    if (mine > other) outcome = 'win'; else if (other > mine) outcome = 'lose';
     S.outcome = outcome;
     buildEndScreen(outcome);
     show('ov-end', true);
@@ -624,6 +760,7 @@
         d.appendChild(q); d.appendChild(a); d.appendChild(e); rv.appendChild(d);
       });
     } else if (s.qAsked) { rv.innerHTML = '<h4>⭐ Perfect! No mistakes to review.</h4>'; }
+    renderEndBoard();
   }
 
   /* =====================================================================
@@ -717,16 +854,36 @@
   function frame(now) {
     if (!G.active) return;
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, Math.max(0.001, (now - lastT) / 1000));
+    const raw = Math.min(0.25, Math.max(0.001, (now - lastT) / 1000));   // real time since the last picture (not capped at 20 fps, so slow computers are measured honestly)
+    const dt = Math.min(0.05, raw);
     lastT = now;
     try {
-      measureFps(dt);
-      if (!S.paused) tick(dt);
+      measureFps(raw);
+      if (!S.paused || NET) tick(dt);
       renderer.render(scene, camera);
     } catch (err) {
       // A bug must never freeze the whole classroom: log it and keep drawing.
       if (!G.errShown) { G.errShown = true; console.error('EduStrike frame error:', err); }
     }
+  }
+
+  /* Fancy is too heavy for this computer: quietly switch to a lighter look without restarting the match */
+  function downgradeFancy() {
+    if (!gfx.fancy || G.downgraded) return;
+    G.downgraded = true; fpsTipShown = true;
+    gfx = Object.assign({}, gfx, { fancy: false, shadows: false, scale: 0.7, maxPR: 1, sparks: 8, fog: 60 });
+    try {
+      if (sunLight) sunLight.castShadow = false;
+      renderer.shadowMap.enabled = false;
+      scene.traverse(function (o) { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { m.needsUpdate = true; }); });
+      outlineMeshes.forEach(function (m) { m.visible = false; });
+      if (world && world.setExtras) world.setExtras(false);
+      scene.fog.far = 60;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1) * 0.7);
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      ES.settings.gfx = 'low'; ES.saveSettings();     // next time start on Low
+    } catch (e) { /* never break the game over graphics */ }
+    toast('Switched to faster graphics so the game stays smooth ⚡', 5);
   }
 
   function measureFps(dt) {
@@ -737,6 +894,7 @@
       if (S.phase === 'play' && !S.paused && !S.qOpen) {
         S.fpsMin = Math.min(S.fpsMin, fps); S.fpsSum += fps; S.fpsN++;
         fpsSlowT = fps < 28 ? fpsSlowT + fpsTime : 0;
+        if (gfx.fancy && fpsSlowT > 4) downgradeFancy();
         if (fpsSlowT > 6 && !fpsTipShown && st.gfx !== 'low') { fpsTipShown = true; toast('Feels slow? Press Esc, quit, and choose Graphics: Low.', 5); }
       }
       fpsFrames = 0; fpsTime = 0;
@@ -747,6 +905,8 @@
     // small timers that always run
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').classList.remove('show'); }
     updateEffects(dt);
+    if (world && world.update) world.update(dt);
+    if (NET) { netTick(dt); return; }
 
     if (S.phase === 'ready') { lookKeys(dt); updateCamera(dt); return; }
     if (S.phase === 'count') {
@@ -790,7 +950,7 @@
   function musicMood(dt) {
     moodT -= dt; if (moodT > 0) return;
     moodT = 0.5;
-    const total = st.minutes * 60;
+    const total = S.total;
     let x = 0.4;
     x += 0.25 * (1 - S.timeLeft / Math.max(1, total));                         // builds as time passes
     if (S.timeLeft < 60) x += 0.25;                                              // final minute
@@ -815,10 +975,10 @@
     if (!p.alive) {
       p.respawnT -= dt;
       $('death-count').textContent = Math.max(1, Math.ceil(p.respawnT));
-      if (p.respawnT <= 0) G.respawn(p);
+      if (p.respawnT <= 0 && !NET) G.respawn(p);
       return;
     }
-    if (S.sinceHurt > P.regenDelay && p.hp < P.hp) p.hp = Math.min(P.hp, p.hp + P.regenRate * dt);
+    if (!NET && S.sinceHurt > P.regenDelay && p.hp < P.hp) p.hp = Math.min(P.hp, p.hp + P.regenRate * dt);
 
     let wx = 0, wz = 0;
     if (!S.qOpen) {
@@ -866,6 +1026,7 @@
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i], m = e.mesh;
       if (!m) continue;
+      if (e.isRemote && !e.seen) { m.visible = false; continue; }
       const u = m.userData;
       if (!e.alive) {
         if (e.deathT > 0) { e.deathT -= dt; const s = Math.max(0.01, e.deathT / 0.5); m.scale.set(s, s, s); m.rotation.y += dt * 12; if (e.deathT <= 0) m.visible = false; }
@@ -876,6 +1037,7 @@
       e.phase += e.speed * dt * 2.2;
       const sw = e.speed > 0.3 ? Math.sin(e.phase) * 0.8 : 0;
       u.legL.rotation.x = sw; u.legR.rotation.x = -sw;
+      if (u.armL) { u.armL.rotation.x = -sw * 0.9; u.body.position.y = e.speed > 0.3 ? Math.abs(Math.sin(e.phase)) * 0.05 : 0; }
       const answering = e.state === 'answer';
       u.bubble.visible = answering;
       m.scale.y = answering ? 0.8 : 1;
@@ -898,6 +1060,10 @@
   }
 
   function updateEffects(dt) {
+    for (let i = 0; i < rings.length; i++) {
+      const r = rings[i];
+      if (r.life > 0) { r.life -= dt; const k = 1 - Math.max(0, r.life) / 0.32; r.mesh.scale.setScalar(1 + k * 5); r.mesh.material.opacity = (1 - k) * 0.9; if (r.life <= 0) r.mesh.visible = false; }
+    }
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i];
       if (t.life > 0) { t.life -= dt; t.mesh.material.opacity = Math.max(0, t.life / 0.12) * 0.9; if (t.life <= 0) t.mesh.visible = false; }
@@ -923,6 +1089,9 @@
     $('radar').classList.toggle('hidden', false);
     const ctrl = $('ready-look'); if (ctrl) ctrl.textContent = st.lookMode === 'lock' ? 'Mouse = look & aim  ·  Left click = fire' : 'Hold RIGHT mouse button (or arrow keys) to look  ·  Left click or F = fire';
     setText('sc-target', 'First to ' + S.target);
+    const goal = $('ready-goal');
+    if (goal) goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
+    show('pause-net', !!NET);
     updateHud(0, true);
   }
 
@@ -979,8 +1148,8 @@
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (!e.alive || e.isPlayer) continue;
-      if (e.team !== 0 && !st.radar) continue;
-      c.fillStyle = e.team === 0 ? '#58a6ff' : '#ff6a45';
+      if (e.team !== myTeam() && !st.radar) continue;
+      c.fillStyle = e.team === myTeam() ? '#58a6ff' : '#ff6a45';
       c.beginPath(); c.arc((e.x + world.half) * s, (e.z + world.half) * s, 3, 0, 7); c.fill();
     }
     if (player.alive) {
@@ -1007,6 +1176,158 @@
     });
   }
 
+  /* =====================================================================
+     CLASS MATCH (online with the teacher's page as referee)
+     The referee sends "snapshots": where everybody is, their health, the score and the clock.
+     We move our own player ourselves (so the controls feel instant) and report our position.
+     ===================================================================== */
+  function netTick(dt) {
+    const p = player;
+    if (S.phase === 'ready' || S.phase === 'wait' || S.phase === 'count') lookKeys(dt);
+    netInterp(dt);
+    if (S.phase === 'play') {
+      S.qCd = Math.max(0, S.qCd - dt);
+      S.timeLeft = Math.max(0, S.timeLeft - dt);          // the referee corrects this a few times a second
+      if (S.qOpen && S.qState === 'asking' && st.qTime) {
+        S.qTime -= dt;
+        $('qp-fill').style.width = Math.max(0, 100 * S.qTime / st.qTime) + '%';
+        $('qp-fill').classList.toggle('urgent', S.qTime < 6);
+        if (S.qTime <= 0) chooseAnswer(-1);
+      }
+      updatePlayer(dt, dt);
+      musicMood(dt);
+    }
+    animateMeshes(dt);
+    updateCamera(dt);
+    updateHud(dt);
+    // tell the referee where we are (15 times a second)
+    if (S.phase !== 'ready' && S.phase !== 'ended') {
+      NET.sendT -= dt;
+      if (NET.sendT <= 0) { NET.sendT = 0.066; netSend({ t: 'st', x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(yaw), q: S.qOpen ? 1 : 0 }); }
+    }
+  }
+
+  /* slide the other players smoothly toward where the last snapshot said they are */
+  function netInterp(dt) {
+    const k = 1 - Math.exp(-dt * 14);
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i];
+      if (!e.isRemote || !e.seen || !e.alive) continue;
+      if (Math.abs(e.tx - e.x) + Math.abs(e.tz - e.z) > 6) { e.x = e.tx; e.y = e.ty; e.z = e.tz; e.yaw = e.tyaw; continue; }   // teleport (respawn)
+      e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k;
+      let d = e.tyaw - e.yaw;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      e.yaw += d * k;
+    }
+  }
+
+  function netPhase(ph, cd) {
+    NET.hostPh = ph;
+    if (S.phase === 'ready' || S.phase === 'ended') return;
+    if (ph === 'count') {
+      if (S.phase !== 'count') { S.phase = 'count'; show('ov-count', true); }
+      const n = Math.ceil(cd);
+      if (n !== NET.cdLast) { NET.cdLast = n; if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); } }
+    } else if (ph === 'play' && S.phase !== 'play') {
+      S.phase = 'play'; show('ov-count', false);
+      toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go');
+    }
+  }
+
+  G.netSnap = function (m) {
+    if (!NET || !G.active || !S) return;
+    S.score = [m.sc[0], m.sc[1]];
+    S.timeLeft = m.tl;
+    netPhase(m.ph, m.cd);
+    for (let i = 0; i < m.ev.length; i++) netEvent(m.ev[i]);
+    for (let i = 0; i < m.e.length; i++) {
+      const r = m.e[i], e = NET.byEid[r[0]];
+      if (!e) continue;
+      const alive = !!(r[6] & 1);
+      if (e.isPlayer) {
+        e.hp = r[5];
+        if (!alive && e.alive && S.phase === 'play') netDie();
+        e.protT = (r[6] & 4) ? 1 : 0;
+      } else {
+        e.tx = r[1]; e.ty = r[2]; e.tz = r[3]; e.tyaw = r[4];
+        if (!e.seen) { e.seen = true; e.x = e.tx; e.y = e.ty; e.z = e.tz; e.yaw = e.tyaw; if (e.mesh) e.mesh.visible = true; }
+        if (e.alive && !alive) { e.alive = false; e.deathT = 0.5; }
+        else if (!e.alive && alive) { e.alive = true; e.deathT = 0; e.x = e.tx; e.y = e.ty; e.z = e.tz; e.yaw = e.tyaw; if (e.mesh) { e.mesh.visible = true; e.mesh.scale.set(1, 1, 1); } }
+        e.hp = r[5]; e.state = (r[6] & 2) ? 'answer' : 'roam'; e.protT = (r[6] & 4) ? 1 : 0; e.speed = r[7];
+      }
+    }
+  };
+
+  function netEvent(ev) {
+    const k = ev[0];
+    if (k === 'shot') {
+      if (ev[8] === NET.you) return;                       // our own shot is already drawn
+      G.addTracer(ev[1], ev[2], ev[3], ev[4], ev[5], ev[6], ev[7]);
+      G.soundAt('botShoot', ev[1], ev[3], 0.7);
+    } else if (k === 'kill') {
+      const a = NET.byEid[ev[1]], v = NET.byEid[ev[2]];
+      if (!v) return;
+      v.deaths++; if (a) { a.kills++; feed(a, v, !!ev[3]); }
+      burst(v.x, v.y + 1, v.z, ES.TEAMS[v.team].color, 12);
+      if (v === player) $('death-text').textContent = a ? 'Tagged by ' + a.name + '!' : 'You were tagged!';
+      if (a === player) { S.stats.kills++; ES.audio.sfx('kill'); }
+    } else if (k === 'hurt') {
+      if (ev[1] !== NET.you) return;
+      const a = NET.byEid[ev[2]];
+      S.sinceHurt = 0; S.dmgFlash = 0.5;
+      if (a) S.hurtFrom = Math.atan2(-(a.x - player.x), -(a.z - player.z));
+      ES.audio.sfx('hurt');
+    }
+  }
+
+  /* the referee says we were tagged */
+  function netDie() {
+    const p = player;
+    p.alive = false; p.hp = 0; p.respawnT = P.respawn;
+    S.stats.deaths++;
+    if (S.qOpen) cancelQuestion(true);
+    fireHeld = false;
+    show('ov-death', true);
+    ES.audio.sfx('die');
+  }
+
+  G.netRespawn = function (m) {
+    if (!NET || !G.active || !S) return;
+    const p = player;
+    p.x = m.x; p.z = m.z; p.y = 0; p.vx = p.vz = p.vy = 0; yaw = m.yaw; pitch = 0;
+    p.alive = true; p.hp = P.hp; p.protT = P.protect;
+    S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99;
+    show('ov-death', false);
+    ES.audio.sfx('respawn');
+  };
+
+  G.netEnd = function (m) {
+    if (!NET || !G.active || !S) return;
+    S.score = [m.sc[0], m.sc[1]]; NET.rows = m.rows;
+    endMatch(m.reason);
+  };
+
+  /* class results table on the end screen (everybody's tags / times tagged) */
+  function renderEndBoard() {
+    const box = $('end-board'); if (!box) return;
+    box.innerHTML = '';
+    if (!NET || !NET.rows) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    [0, 1].forEach(function (team) {
+      const col = document.createElement('div'); col.className = 'sbcol';
+      const h = document.createElement('h3'); h.textContent = ES.TEAMS[team].name + ' – ' + S.score[team]; h.style.background = ES.TEAMS[team].css; col.appendChild(h);
+      NET.rows.filter(function (r) { return r.team === team; }).sort(function (a, b) { return b.kills - a.kills; }).forEach(function (r) {
+        const row = document.createElement('div'); row.className = 'sbrow' + (r.eid === NET.you ? ' me' : '');
+        const n = document.createElement('span'); n.textContent = (r.bot ? '🤖 ' : '') + r.name;
+        const k = document.createElement('span'); k.textContent = r.kills + ' / ' + r.deaths;
+        row.appendChild(n); row.appendChild(k); col.appendChild(row);
+      });
+      box.appendChild(col);
+    });
+  }
+  G.isNet = function () { return !!NET; };
+
   /* ---------- buttons used by the overlays ---------- */
   G.resume = resume;
   G.pause = pause;
@@ -1021,7 +1342,7 @@
     getLook: function () { return { yaw: yaw, pitch: pitch }; },
     setFire: function (v) { fireHeld = v; },
     choose: chooseAnswer, closeQ: closeQuestion,
-    end: endMatch,
+    end: endMatch, get net() { return NET; },
     step: function (n, dt) { for (let i = 0; i < n; i++) tick(dt); }   // run the game without drawing (used for fast automatic tests)
   };
 })();

@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 3A - class room test';
+  ES.VERSION = 'Stage 3C - Fancy graphics';
 
   /* Teacher ON/OFF switch.
      Paste the Apps Script "Web app URL" between the quotes (see SETUP step).
@@ -53,7 +53,8 @@
   ES.GFX = {
     low:    { label: 'Low (fastest)', scale: 0.7, maxPR: 1,   aa: false, shadows: false, fog: 46, sparks: 6 },
     medium: { label: 'Medium',        scale: 1.0, maxPR: 1,   aa: false, shadows: false, fog: 60, sparks: 12 },
-    high:   { label: 'High',          scale: 1.0, maxPR: 1.5, aa: true,  shadows: true,  fog: 80, sparks: 20 }
+    high:   { label: 'High',          scale: 1.0, maxPR: 1.5, aa: true,  shadows: true,  fog: 80, sparks: 20 },
+    fancy:  { label: '✨ Fancy (strong laptops)', scale: 1.0, maxPR: 1.5, aa: true, shadows: true, fog: 120, sparks: 48, fancy: true }
   };
 
   ES.defaults = {

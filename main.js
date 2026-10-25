@@ -126,6 +126,7 @@
     const msg = $('menu-msg'); msg.classList.add('hidden');
     ES.audio.unlock();
     showScreen('game');
+    $('btn-again').textContent = '↻ Play again';
     const r = ES.game.start();
     btn.disabled = false;
     if (!r.ok) {
@@ -133,7 +134,13 @@
       msg.textContent = r.error; msg.classList.remove('hidden');
     }
   }
-  function toMenu() { ES.game.stop(); showScreen('menu'); }
+  /* leave the game screen. In a class match we go back to the waiting room (still connected), otherwise to the menu */
+  function toMenu() {
+    const wasNet = ES.game.isNet && ES.game.isNet();
+    ES.game.stop();
+    if (wasNet && ES.session.state.connected) { ES.session.send({ t: 'quit' }); showScreen('room'); ES.lobby.showWait(); }
+    else showScreen('menu');
+  }
 
   /* ---------- teacher ON/OFF switch ---------- */
   function showGate(icon, title, text, canRetry) {
@@ -175,7 +182,25 @@
     $('btn-resume').addEventListener('click', function () { ES.game.resume(); });
     $('btn-quit').addEventListener('click', toMenu);
     $('btn-menu').addEventListener('click', toMenu);
-    $('btn-again').addEventListener('click', startGame);
+    $('btn-again').addEventListener('click', function () { if (ES.game.isNet && ES.game.isNet()) toMenu(); else startGame(); });
+
+    // ---- messages from the teacher's page during a class match ----
+    ES.session.on('start', function (m) {
+      if (ES.game.active) ES.game.stop();
+      ES.audio.unlock(); applyAudio();
+      showScreen('game');
+      $('btn-again').textContent = '↩ Back to class room';
+      const r = ES.game.start({ net: m });
+      if (!r.ok) {
+        ES.session.send({ t: 'quit' }); showScreen('room'); ES.lobby.showWait();
+        $('room-msg').textContent = r.error; $('room-msg').classList.remove('hidden'); $('room-msg').classList.add('bad');
+      }
+    });
+    ES.session.on('snap', function (m) { ES.game.netSnap(m); });
+    ES.session.on('respawn', function (m) { ES.game.netRespawn(m); });
+    ES.session.on('end', function (m) { ES.game.netEnd(m); });
+    // the room closed / we were removed / the connection dropped while in a match: leave the game screen
+    ES.lobby.onEnd = function () { if (ES.game.active) ES.game.stop(); showScreen('room'); };
   }
   init();
 })();
