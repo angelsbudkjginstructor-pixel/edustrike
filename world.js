@@ -30,17 +30,35 @@
   /* opts.map      = which map to build (see ES.MAPS_LIST)
      opts.fancy    = prettier look (cartoon shading, windows, round trees, flowers, hills, clouds) for strong computers
      opts.noVisual = build only the collision/path-finding part (used by the teacher's page, which draws nothing) */
-  /* a 4-step light ramp: makes shading look hand-drawn ("toon") */
-  ES.toonGradient = function (T) {
-    const d = new Uint8Array([160, 160, 160, 255, 200, 200, 200, 255, 232, 232, 232, 255, 255, 255, 255, 255]);
-    const t = new T.DataTexture(d, 4, 1);
-    t.minFilter = t.magFilter = T.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true;
+  /* Surface detail made by code: a small grey "grain" picture (concrete / plaster / wood feel) that repeats everywhere.
+     It is multiplied with the wall colours, so one tiny texture gives every wall, crate and roof a real surface. */
+  ES.detailTexture = function (T) {
+    const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const c = cv.getContext('2d');
+    let seed = 12345; const rnd = function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    c.fillStyle = '#e4e4e4'; c.fillRect(0, 0, S, S);
+    for (let i = 0; i < 260; i++) {                                    // soft blotches (stains, weathering), wrapped so the tile has no seams
+      const x = rnd() * S, y = rnd() * S, r = 6 + rnd() * 26, dark = rnd() < 0.6, a = 0.025 + rnd() * 0.05;
+      [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]].forEach(function (o) {
+        const g = c.createRadialGradient(x + o[0], y + o[1], 0, x + o[0], y + o[1], r);
+        g.addColorStop(0, (dark ? 'rgba(0,0,0,' : 'rgba(255,255,255,') + a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = g; c.fillRect(x + o[0] - r, y + o[1] - r, r * 2, r * 2);
+      });
+    }
+    const im = c.getImageData(0, 0, S, S), d = im.data;                // very fine grain on top
+    for (let i = 0; i < S * S; i++) { const n = (rnd() - 0.5) * 14; d[i * 4] += n; d[i * 4 + 1] += n; d[i * 4 + 2] += n; }
+    c.putImageData(im, 0, 0);
+    c.fillStyle = 'rgba(0,0,0,.12)';                                   // a few fine cracks / seams
+    for (let i = 0; i < 8; i++) { c.fillRect(rnd() * S, rnd() * S, 6 + rnd() * 40, 1); c.fillRect(rnd() * S, rnd() * S, 1, 6 + rnd() * 40); }
+    const t = new T.CanvasTexture(cv);
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4;
+    if (T.SRGBColorSpace) t.colorSpace = T.SRGBColorSpace;
     return t;
   };
 
   ES.buildWorld = function (scene, opts) {
     opts = opts || {};
-    const FANCY = !!opts.fancy, NOVIS = !!opts.noVisual;
+    const FANCY = !!opts.fancy, REAL = !!opts.real, NOVIS = !!opts.noVisual;
     const MAPID = ES.MAPS_LIST.some(function (m) { return m.id === opts.map; }) ? opts.map : 'park';
     // colours and extras that make each map feel different
     const THEME = MAPID === 'space'
@@ -84,7 +102,7 @@
         for (let o = -len / 2 + 3; o < len / 2; o += 6) {
           const px = alongLong ? cx + o : cx, pz = alongLong ? cz : cz + o;
           deco(px, h / 2 + 0.2, pz, alongLong ? 0.9 : 1.3, h + 0.4, alongLong ? 1.3 : 0.9, 0xb7c1d3);
-          sphere(px, h + 0.7, pz, 0.5, 0.8, 0xffd23f);
+          if (!REAL) sphere(px, h + 0.7, pz, 0.5, 0.8, 0xffd23f); else deco(px, h + 0.55, pz, alongLong ? 1.0 : 1.4, 0.3, alongLong ? 1.4 : 1.0, 0x9aa3b2);
         }
         return;
       }
@@ -106,7 +124,7 @@
           }
         });
       }
-      if (style === 'tower') { deco(cx, h + 0.4, cz, 0.12, 0.8, 0.12, 0xdddddd); sphere(cx, h + 0.85, cz, 0.18, 1, 0xffd23f); }   // antenna with a golden ball
+      if (style === 'tower') { deco(cx, h + 0.4, cz, 0.12, 0.8, 0.12, 0xdddddd); if (!REAL) sphere(cx, h + 0.85, cz, 0.18, 1, 0xffd23f); }   // antenna with a golden ball (cartoon only)
     }
     function deco(cx, cy, cz, w, h, d, color) {
       vis.push({ cx: cx, cy: cy, cz: cz, w: w, h: h, d: d, color: color });
@@ -122,6 +140,13 @@
     }
     function tree(cx, cz, collide) {
       if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz - 0.5, z1: cz + 0.5, h: 5, y0: 0, walk: false });
+      if (REAL) {                                        // realistic tree: dark trunk + stacked layers of leaves
+        cyl(cx, 1.1, cz, 0.2, 0.32, 2.2, 0x5a4029);
+        cone(cx, 2.5, cz, 1.9, 2.4, 0x2d5a34);
+        cone(cx, 3.7, cz, 1.5, 2.2, 0x356b3b);
+        cone(cx, 4.8, cz, 1.0, 1.9, 0x3f7a45);
+        return;
+      }
       if (FANCY) {                                       // cartoon tree: curved trunk + three fluffy puffs
         cyl(cx, 0.9, cz, 0.22, 0.34, 1.8, 0x8a5a33);
         sphere(cx, 2.4, cz, 1.45, 0.85, 0x2f9a4e);
@@ -447,7 +472,7 @@
     }
 
     /* ---------- merge every visual piece into a single mesh ---------- */
-    const pos = [], nor = [], col = [];
+    const pos = [], nor = [], col = [], uvs = [];
     const tmp = new T.Color();
     let geo = null, mesh = null, tex = null, ground = null, outer = null, toonTex = null;
     if (!NOVIS) {
@@ -460,10 +485,16 @@
         g = g.toNonIndexed();
         const p = g.attributes.position.array, n = g.attributes.normal.array;
         tmp.set(b.color);
+        if (REAL) tmp.offsetHSL(0, -0.16, -0.07);                    // calmer, more natural colours than the cartoon look
         for (let i = 0; i < p.length; i += 3) {
-          pos.push(p[i] + b.cx, p[i + 1] + b.cy, p[i + 2] + b.cz);
+          const wx = p[i] + b.cx, wy = p[i + 1] + b.cy, wz = p[i + 2] + b.cz;
+          pos.push(wx, wy, wz);
           nor.push(n[i], n[i + 1], n[i + 2]);
           col.push(tmp.r, tmp.g, tmp.b);
+          if (REAL) {                                                // surface-detail map: projected from the side the face looks at
+            const ax = Math.abs(n[i]), ay = Math.abs(n[i + 1]);
+            if (ay > 0.6) uvs.push(wx * 0.25, wz * 0.25); else if (ax > 0.6) uvs.push(wz * 0.25, wy * 0.25); else uvs.push(wx * 0.25, wy * 0.25);
+          }
         }
         g.dispose();
       });
@@ -472,9 +503,12 @@
       geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
       geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
       let mat;
-      if (FANCY) {                       // cartoon ("toon") shading: light comes in clear steps, like a drawing
-        toonTex = ES.toonGradient(T);
-        mat = new T.MeshToonMaterial({ vertexColors: true, gradientMap: toonTex });
+      if (REAL) {                        // realistic shading: rough surfaces with fine grain, made by code (no image files)
+        geo.setAttribute('uv', new T.Float32BufferAttribute(uvs, 2));
+        toonTex = ES.detailTexture(T);   // (name kept: it is the surface-detail map)
+        const mo = { vertexColors: true, roughness: 0.88, metalness: 0.02, map: toonTex };
+        if (opts.bump) { mo.bumpMap = toonTex; mo.bumpScale = 0.7; }
+        mat = new T.MeshStandardMaterial(mo);
       } else mat = new T.MeshLambertMaterial({ vertexColors: true });
       mesh = new T.Mesh(geo, mat);
       mesh.castShadow = true; mesh.receiveShadow = true;
@@ -486,7 +520,7 @@
     if (!NOVIS) {
       const cv = document.createElement('canvas');
       if (FANCY) {
-        const S = 1024, k = S / 64;                                     // 16 pixels per metre
+        const S = REAL ? (opts.texSize || 1024) : 1024, k = S / 64;     // 16 pixels per metre (32 on Ultra)
         cv.width = cv.height = S;
         const c2 = cv.getContext('2d');
         c2.fillStyle = THEME.fancyBase; c2.fillRect(0, 0, S, S);
@@ -511,8 +545,16 @@
         const flowers = ['#ff6fa5', '#ffd23f', '#ffffff', '#b78bff'];     // painted flower dots
         for (let i = 0; THEME.flowers && i < 380; i++) { c2.fillStyle = flowers[i % 4]; c2.beginPath(); c2.arc(Math.random() * S, Math.random() * S, 2 + Math.random() * 2, 0, 7); c2.fill(); }
         c2.strokeStyle = 'rgba(0,0,0,.18)'; c2.lineWidth = 6; c2.strokeRect(3, 3, S - 6, S - 6);
+        if (REAL) {                                                         // fine grain (dirt / grass speckle) and calmer colours
+          for (let i = 0; i < S * S / 90; i++) { c2.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.08)'; c2.fillRect(Math.random() * S, Math.random() * S, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+          try {
+            const cv2 = document.createElement('canvas'); cv2.width = cv2.height = S; const c3 = cv2.getContext('2d');
+            c3.filter = 'saturate(0.72) brightness(0.9) contrast(1.06)'; c3.drawImage(cv, 0, 0);
+            c2.clearRect(0, 0, S, S); c2.drawImage(cv2, 0, 0);
+          } catch (e) { /* ctx.filter missing: keep the plain ground */ }
+        }
         tex = new T.CanvasTexture(cv);
-        tex.anisotropy = 4;
+        tex.anisotropy = REAL ? 8 : 4;
       } else {
         cv.width = cv.height = 64;
         const c2 = cv.getContext('2d');
@@ -523,10 +565,10 @@
         tex.repeat.set(16, 16);
       }
       if (T.SRGBColorSpace) tex.colorSpace = T.SRGBColorSpace;
-      ground = new T.Mesh(new T.PlaneGeometry(64, 64), new T.MeshLambertMaterial({ map: tex }));
+      ground = new T.Mesh(new T.PlaneGeometry(64, 64), REAL ? new T.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 }) : new T.MeshLambertMaterial({ map: tex }));
       ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
       scene.add(ground);
-      outer = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({ color: FANCY ? THEME.fancyOuter : THEME.lowOuter }));
+      outer = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({ color: REAL ? shade(THEME.fancyOuter, 0.72) : (FANCY ? THEME.fancyOuter : THEME.lowOuter) }));
       outer.rotation.x = -Math.PI / 2; outer.position.y = -0.04;
       scene.add(outer);
 

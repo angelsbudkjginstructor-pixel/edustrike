@@ -103,3 +103,16 @@ Subject, Subtopic, Grade, Difficulty, Question, A, B, C, D, Correct, Explanation
 - Setup: File > Share > Publish to web > choose the Questions tab and "Comma-separated values (.csv)" > Publish > copy the link into `ES.QUESTION_SHEET.url` in `js/config.js`. Changes reach the game a few minutes after you edit the sheet.
 - If the sheet cannot be reached, the game uses the last saved copy, then the 50 built-in questions.
 - Teacher page > "Questions" box: tick the subtopics for the class match.
+
+## Stage 5B - four graphics levels
+
+Students choose their own level in Settings > Graphics & Controls (the default is Low). The teacher can force one level for everybody on the teacher page ("Graphics for everyone").
+
+- **Low** - fastest, for Chromebooks and old laptops.
+- **Medium** - full-size picture.
+- **High** - real sun shadows, smooth edges, realistic soldiers and rifle, concrete/wood surface detail, calmer natural colours, sky and clouds.
+- **Ultra** - High plus very sharp picture, soft shadows (bigger map), glowing shots and hit flashes, more sparks, sun glow and a soft dark edge on the screen.
+
+Nothing extra is downloaded: the surface detail, ground painting and soldiers are all made by code (no image or model files), so the site stays about the same size.
+If a computer is too slow, the game steps down ONE level at a time (Ultra > High > Medium > Low) with a small message, and remembers that level for next time.
+An old saved "Fancy" setting is treated as Ultra.

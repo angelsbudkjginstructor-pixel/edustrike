@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 5A - questions from Google Sheet';
+  ES.VERSION = 'Stage 5B - 4 graphics levels';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -129,13 +129,20 @@
     hard:   { label: 'Hard',   speed: 4.6, react: 0.3,  aim: 0.035, dmg: 11, interval: 0.38, range: 38, fov: 2.6, turn: 6.0, mag: 14, ansTime: 3.0, ansAcc: 0.90 }
   };
 
-  /* Graphics levels. "scale" shrinks the internal picture (big speed-up on weak GPUs). */
+  /* Graphics levels, from the lightest to the heaviest computer.
+     scale   = shrinks the internal picture (big speed-up on weak GPUs)      maxPR = sharpness cap (1 = normal, 2 = very sharp)
+     aa      = smooth edges      shadows = real sun shadows (shadowSize = quality, soft = soft edges)
+     real    = realistic look (surface detail, realistic soldiers + gun, warm film-like colours)
+     world   = extra scenery (windows, ground painting, hills, clouds, base beams)
+     fx      = glow effects (glowing shots, flash rings, more sparks, sun glow, vignette) */
   ES.GFX = {
-    low:    { label: 'Low (fastest)', scale: 0.7, maxPR: 1,   aa: false, shadows: false, fog: 46, sparks: 6 },
-    medium: { label: 'Medium',        scale: 1.0, maxPR: 1,   aa: false, shadows: false, fog: 60, sparks: 12 },
-    high:   { label: 'High',          scale: 1.0, maxPR: 1.5, aa: true,  shadows: true,  fog: 80, sparks: 20 },
-    fancy:  { label: '✨ Fancy (strong laptops)', scale: 1.0, maxPR: 1.5, aa: true, shadows: true, fog: 120, sparks: 48, fancy: true }
+    low:    { label: 'Low (fastest)', scale: 0.7, maxPR: 1,   aa: false, shadows: false, fog: 46, sparks: 6,  far: 140 },
+    medium: { label: 'Medium',        scale: 1.0, maxPR: 1,   aa: false, shadows: false, fog: 60, sparks: 12, far: 140 },
+    high:   { label: 'High',          scale: 1.0, maxPR: 1.5, aa: true,  shadows: true,  shadowSize: 1024, soft: false, fog: 95,  sparks: 20, far: 200, real: true, world: true,  fx: false },
+    ultra:  { label: 'Ultra (strong laptops)', scale: 1.0, maxPR: 2, aa: true, shadows: true, shadowSize: 2048, soft: true, fog: 140, sparks: 48, far: 240, real: true, world: true, fx: true, texSize: 2048, bump: true }
   };
+  ES.GFX_ORDER = ['low', 'medium', 'high', 'ultra'];                 // used when a slow computer steps down one level
+  ES.gfxKey = function (k) { return k === 'fancy' ? 'ultra' : (ES.GFX[k] ? k : 'low'); };     // old saved "fancy" = Ultra
 
   ES.defaults = {
     name: 'Cadet',

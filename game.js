@@ -43,8 +43,10 @@
     if (G.active) G.stop();
     st = JSON.parse(JSON.stringify(ES.settings));
     NET = (opts && opts.net) ? { team: opts.net.team, you: opts.net.you, byEid: {}, sendT: 0, cdLast: 99, hostPh: 'wait', rows: null } : null;
-    if (opts && opts.net && opts.net.gfx && ES.GFX[opts.net.gfx]) st.gfx = opts.net.gfx;      // the teacher can make everybody use one graphics level
-    gfx = ES.GFX[st.gfx] || ES.GFX.low;
+    st.gfx = ES.gfxKey(st.gfx);
+    if (opts && opts.net && opts.net.gfx && ES.GFX[ES.gfxKey(opts.net.gfx)]) st.gfx = ES.gfxKey(opts.net.gfx);      // the teacher can make everybody use one graphics level
+    gfx = Object.assign({}, ES.GFX[st.gfx] || ES.GFX.low);       // a copy: a slow computer may step this down while playing
+    G.level = st.gfx;
     G.downgraded = false; outlineMeshes = []; rings = []; ringI = 0;
     namesAll = !!(opts && opts.net && opts.net.names === 'all');      // teacher setting: show every player's name
 
@@ -60,7 +62,8 @@
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, gfx.maxPR) * gfx.scale);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
-    if (gfx.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap; }
+    if (gfx.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = gfx.soft ? T.PCFSoftShadowMap : T.PCFShadowMap; }
+    if (gfx.real && T.ACESFilmicToneMapping) { renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95; }   // film-like colours
 
     /* scene: sky gradient, fog, lights */
     scene = new T.Scene();
@@ -74,9 +77,9 @@
     const skyTex = new T.CanvasTexture(sc);
     if (T.SRGBColorSpace) skyTex.colorSpace = T.SRGBColorSpace;
     scene.background = skyTex;
-    scene.fog = new T.Fog(SKY ? SKY.fog : 0xcfeaff, gfx.fancy ? 45 : 22, gfx.fog);
-    scene.add(new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? 1.6 : 2.1));
-    const sun = sunLight = new T.DirectionalLight(SKY ? SKY.sun : 0xfff4e0, 1.6);
+    scene.fog = new T.Fog(SKY ? SKY.fog : (gfx.real ? 0xd8e6f0 : 0xcfeaff), gfx.real ? 45 : 22, gfx.fog);
+    scene.add(new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? (gfx.real ? 2.3 : 1.6) : (gfx.real ? 1.2 : 2.1)));
+    const sun = sunLight = new T.DirectionalLight(SKY ? SKY.sun : 0xfff4e0, gfx.real ? 2.2 : 1.6);
     if (SKY && SKY.stars) {                                       // a cheap field of stars (one Points object, 260 dots)
       const sp = new Float32Array(260 * 3);
       for (let i = 0; i < 260; i++) { const a = Math.random() * 6.283, el = 0.15 + Math.random() * 1.3, r = 120; sp[i * 3] = Math.cos(a) * Math.cos(el) * r; sp[i * 3 + 1] = Math.sin(el) * r; sp[i * 3 + 2] = Math.sin(a) * Math.cos(el) * r; }
@@ -87,15 +90,26 @@
     sun.position.set(25, 45, 15);
     if (gfx.shadows) {
       sun.castShadow = true;
-      sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.06;
+      sun.shadow.mapSize.set(gfx.shadowSize || 1024, gfx.shadowSize || 1024); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.06;
       const c = sun.shadow.camera; c.left = -42; c.right = 42; c.top = 42; c.bottom = -42; c.near = 5; c.far = 120;
     }
     scene.add(sun);
+    if (gfx.fx && !(SKY && SKY.stars)) {                          // Ultra: a soft glow around the sun, and a gentle dark edge on the screen
+      const gc = document.createElement('canvas'); gc.width = gc.height = 128;
+      const gx = gc.getContext('2d'), gg = gx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gg.addColorStop(0, 'rgba(255,248,220,1)'); gg.addColorStop(0.18, 'rgba(255,236,170,.55)'); gg.addColorStop(1, 'rgba(255,220,140,0)');
+      gx.fillStyle = gg; gx.fillRect(0, 0, 128, 128);
+      const glowSpr = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(gc), blending: T.AdditiveBlending, depthWrite: false, fog: false, transparent: true, opacity: 0.85 }));
+      glowSpr.position.copy(sun.position).normalize().multiplyScalar(170); glowSpr.scale.set(90, 90, 1); scene.add(glowSpr);
+      const vg = document.createElement('div');
+      vg.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 62%,rgba(0,0,0,.38) 100%)';
+      wrap.appendChild(vg);
+    }
 
-    camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, gfx.fancy ? 240 : 140);
+    camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, gfx.far || 140);
     scene.add(camera);
 
-    world = ES.buildWorld(scene, { fancy: !!gfx.fancy, map: (opts && opts.net && opts.net.map) || st.map });
+    world = ES.buildWorld(scene, { fancy: !!gfx.world, real: !!gfx.real, bump: !!gfx.bump, texSize: gfx.texSize || 1024, map: (opts && opts.net && opts.net.map) || st.map });
     buildShared();
     buildGun();
     buildEffects();
@@ -234,55 +248,55 @@
     geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
     return geo;
   }
-  /* the same shape, pushed outward a little: drawn black from the inside gives a cartoon outline */
-  function outlineOf(geo, amt) {
-    const o = geo.clone(), p = o.attributes.position.array, n = o.attributes.normal.array;
-    for (let i = 0; i < p.length; i += 3) { p[i] += n[i] * amt; p[i + 1] += n[i + 1] * amt; p[i + 2] += n[i + 2] * amt; }
-    o.attributes.position.needsUpdate = true;
-    return o;
-  }
-
-  /* Fancy: cartoon fighter shapes shared by everybody (so 30 fighters still cost little) */
-  function buildFancyShared() {
-    const skin = 0xffd6b0, dark = 0x2b3550, boot = 0x1a2035;
-    shared.toon = ES.toonGradient(T);
+  /* High / Ultra: realistic soldiers, built once and shared by everybody (so 30 fighters still cost little).
+     Muted army colours, with the TEAM colour on helmet, vest and backpack stripe so you can still tell teams apart. */
+  function buildRealShared() {
+    const fat = 0x3d4636, fat2 = 0x2f362a, dark = 0x22262c, skin = 0xd2a07a, gunC = 0x1d2127, boot = 0x15181c, ULTRA = !!gfx.fx;
+    const seg = ULTRA ? 10 : 7;
     [0, 1].forEach(function (team) {
-      const c = ES.TEAMS[team].color, c2 = team === 0 ? 0x1f5fcc : 0xcc3a22;
-      const body = mergeParts([
-        { g: new T.CapsuleGeometry(0.25, 0.3, 3, 10), y: 1.08, c: c },                                     // round body
-        { g: new T.CylinderGeometry(0.265, 0.265, 0.07, 12), y: 0.9, c: dark },                            // belt
-        { g: new T.SphereGeometry(0.25, 12, 9), y: 1.57, c: skin },                                         // head
-        { g: new T.SphereGeometry(0.285, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), y: 1.6, c: c },         // helmet
-        { g: new T.BoxGeometry(0.4, 0.05, 0.14), y: 1.63, z: -0.27, c: c2 },                                // helmet peak
-        { g: new T.SphereGeometry(0.035, 6, 5), x: -0.085, y: 1.54, z: -0.225, c: 0x1a2035 },               // eyes
-        { g: new T.SphereGeometry(0.035, 6, 5), x: 0.085, y: 1.54, z: -0.225, c: 0x1a2035 },
-        { g: new T.SphereGeometry(0.035, 6, 5), x: -0.14, y: 1.48, z: -0.2, sy: 0.7, c: 0xff9eb0 },         // cheeks
-        { g: new T.SphereGeometry(0.035, 6, 5), x: 0.14, y: 1.48, z: -0.2, sy: 0.7, c: 0xff9eb0 },
-        { g: new T.CylinderGeometry(0.02, 0.02, 0.2, 5), y: 1.98, c: 0xdddddd },                            // antenna
-        { g: new T.SphereGeometry(0.06, 8, 6), y: 2.1, c: 0xffd23f },
-        { g: new T.BoxGeometry(0.34, 0.42, 0.16), y: 1.1, z: 0.27, c: c2 },                                 // backpack
-        { g: new T.BoxGeometry(0.26, 0.06, 0.1), y: 1.28, z: 0.34, c: 0xffd23f },
-        { g: new T.CapsuleGeometry(0.07, 0.24, 2, 6), rx: Math.PI / 2, x: 0.3, y: 1.15, z: -0.12, c: c },   // right arm holds the blaster
-        { g: new T.SphereGeometry(0.075, 7, 5), x: 0.3, y: 1.15, z: -0.3, c: skin },
-        { g: new T.BoxGeometry(0.09, 0.12, 0.42), x: 0.3, y: 1.1, z: -0.38, c: 0x2a2f3a },                  // blaster
-        { g: new T.BoxGeometry(0.1, 0.03, 0.2), x: 0.3, y: 1.17, z: -0.36, c: team === 0 ? 0x7fd0ff : 0xff9a6d },
-        { g: new T.SphereGeometry(0.05, 6, 5), x: 0.3, y: 1.1, z: -0.62, c: 0xffe14d }
-      ]);
-      shared['fbody' + team] = body;
-      shared['fout' + team] = outlineOf(body, 0.032);
-      // left arm swings: pivot at the shoulder
-      shared['farm' + team] = mergeParts([
-        { g: new T.CapsuleGeometry(0.07, 0.26, 2, 6), y: -0.2, c: c },
-        { g: new T.SphereGeometry(0.075, 7, 5), y: -0.42, c: skin }
+      const base = new T.Color(ES.TEAMS[team].color), tc = base.clone().multiplyScalar(0.82).getHex(), lens = team === 0 ? 0x9fe8ff : 0xffc08a;
+      const parts = [
+        { g: new T.BoxGeometry(0.5, 0.52, 0.28), y: 1.13, c: fat },                                  // torso
+        { g: new T.BoxGeometry(0.54, 0.42, 0.33), y: 1.2, c: tc },                                   // tactical vest (team colour)
+        { g: new T.BoxGeometry(0.3, 0.17, 0.03), y: 1.26, z: -0.18, c: dark },                       // chest plate
+        { g: new T.BoxGeometry(0.12, 0.12, 0.07), x: -0.14, y: 1.02, z: -0.18, c: dark },            // ammo pouches
+        { g: new T.BoxGeometry(0.12, 0.12, 0.07), x: 0.14, y: 1.02, z: -0.18, c: dark },
+        { g: new T.BoxGeometry(0.52, 0.07, 0.31), y: 0.9, c: dark },                                 // belt
+        { g: new T.BoxGeometry(0.46, 0.14, 0.27), y: 0.83, c: fat },                                 // hips
+        { g: new T.CylinderGeometry(0.07, 0.08, 0.1, 8), y: 1.43, c: skin },                         // neck
+        { g: new T.SphereGeometry(0.15, seg + 3, seg), y: 1.56, sy: 1.1, c: skin },                  // head
+        { g: new T.BoxGeometry(0.22, 0.1, 0.2), y: 1.5, z: -0.04, c: dark },                         // face cover
+        { g: new T.SphereGeometry(0.2, seg + 4, seg, 0, Math.PI * 2, 0, Math.PI * 0.58), y: 1.6, c: tc },   // helmet (team colour)
+        { g: new T.CylinderGeometry(0.21, 0.21, 0.03, seg + 4), y: 1.6, c: fat2 },                   // helmet rim
+        { g: new T.BoxGeometry(0.24, 0.06, 0.05), y: 1.6, z: -0.17, c: dark },                       // goggles
+        { g: new T.BoxGeometry(0.2, 0.035, 0.02), y: 1.6, z: -0.2, c: lens },
+        { g: new T.BoxGeometry(0.36, 0.44, 0.16), y: 1.18, z: 0.25, c: fat2 },                       // backpack
+        { g: new T.BoxGeometry(0.1, 0.3, 0.02), y: 1.2, z: 0.335, c: tc },                           // team stripe on the backpack
+        { g: new T.CapsuleGeometry(0.065, 0.26, 2, 6), rx: Math.PI / 2, x: 0.27, y: 1.18, z: -0.14, c: fat },   // right arm
+        { g: new T.SphereGeometry(0.07, 6, 5), x: 0.25, y: 1.13, z: -0.34, c: dark },                // glove
+        { g: new T.BoxGeometry(0.07, 0.1, 0.66), x: 0.25, y: 1.12, z: -0.42, c: gunC },              // rifle
+        { g: new T.CylinderGeometry(0.018, 0.018, 0.4, 6), rx: Math.PI / 2, x: 0.25, y: 1.14, z: -0.9, c: gunC },
+        { g: new T.BoxGeometry(0.05, 0.16, 0.07), x: 0.25, y: 1.0, z: -0.38, c: gunC },              // magazine
+        { g: new T.BoxGeometry(0.06, 0.12, 0.22), x: 0.25, y: 1.14, z: -0.02, c: gunC },             // stock
+        { g: new T.BoxGeometry(0.03, 0.04, 0.1), x: 0.25, y: 1.2, z: -0.5, c: dark }                 // sight
+      ];
+      if (ULTRA) parts.push(
+        { g: new T.BoxGeometry(0.16, 0.08, 0.2), x: -0.3, y: 1.4, c: tc },                           // shoulder pads
+        { g: new T.BoxGeometry(0.16, 0.08, 0.2), x: 0.3, y: 1.4, c: tc },
+        { g: new T.CylinderGeometry(0.008, 0.008, 0.4, 4), x: -0.12, y: 1.62, z: 0.3, c: dark },     // radio antenna
+        { g: new T.BoxGeometry(0.08, 0.1, 0.05), x: 0, y: 1.1, z: -0.2, c: fat2 });                  // radio on the chest
+      shared['rbody' + team] = mergeParts(parts);
+      shared['rarm' + team] = mergeParts([                                                          // left arm swings: pivot at the shoulder
+        { g: new T.CapsuleGeometry(0.065, 0.26, 2, 6), y: -0.2, c: fat },
+        { g: new T.SphereGeometry(0.07, 6, 5), y: -0.42, c: dark }
       ]);
     });
-    // legs swing: pivot at the hip
-    shared.fleg = mergeParts([
-      { g: new T.CapsuleGeometry(0.095, 0.4, 2, 6), y: -0.32, c: dark },
-      { g: new T.BoxGeometry(0.2, 0.13, 0.32), y: -0.74, z: -0.04, c: boot }
+    shared.rleg = mergeParts([                                                                      // legs swing: pivot at the hip
+      { g: new T.CapsuleGeometry(0.095, 0.4, 2, 6), y: -0.3, c: fat },
+      { g: new T.BoxGeometry(0.15, 0.12, 0.05), y: -0.44, z: -0.08, c: dark },                      // knee pad
+      { g: new T.BoxGeometry(0.2, 0.16, 0.32), y: -0.74, z: -0.04, c: boot }                        // boot
     ]);
-    shared.fMat = new T.MeshToonMaterial({ vertexColors: true, gradientMap: shared.toon });
-    shared.outMat = new T.MeshBasicMaterial({ color: 0x0c1220, side: T.BackSide });
+    shared.rMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.08 });
   }
 
   /* Geometry/textures that all bots share (so 12 bots cost almost nothing extra) */
@@ -314,7 +328,7 @@
     q2.fillStyle = '#ff8a1f'; q2.font = 'bold 44px sans-serif'; q2.textAlign = 'center'; q2.textBaseline = 'middle'; q2.fillText('?', 32, 35);
     shared.bubbleTex = new T.CanvasTexture(qc);
     shared.bubbleMat = new T.SpriteMaterial({ map: shared.bubbleTex, depthTest: false });
-    if (gfx.fancy) buildFancyShared();
+    if (gfx.real) buildRealShared();
   }
 
   function makeNameSprite(name, css, seeThroughWalls) {
@@ -329,27 +343,27 @@
     return spr;
   }
 
-  function buildFancyMesh(e) {
+  function buildRealMesh(e) {
     const root = new T.Group();
-    const bodyMat = new T.MeshToonMaterial({ vertexColors: true, gradientMap: shared.toon });
-    const body = new T.Mesh(shared['fbody' + e.team], bodyMat);
-    const out = new T.Mesh(shared['fout' + e.team], shared.outMat);
-    out.userData.shared = true; body.add(out); outlineMeshes.push(out);
-    const legL = new T.Mesh(shared.fleg, shared.fMat), legR = new T.Mesh(shared.fleg, shared.fMat);
+    const bodyMat = shared.rMat.clone();               // own copy so the "I was hit" flash only lights this soldier
+    const body = new T.Mesh(shared['rbody' + e.team], bodyMat);
+    const legL = new T.Mesh(shared.rleg, shared.rMat), legR = new T.Mesh(shared.rleg, shared.rMat);
     legL.position.set(-0.12, 0.84, 0); legR.position.set(0.12, 0.84, 0);
-    const armL = new T.Mesh(shared['farm' + e.team], shared.fMat); armL.position.set(-0.3, 1.32, 0);
+    const armL = new T.Mesh(shared['rarm' + e.team], shared.rMat); armL.position.set(-0.3, 1.32, 0);
     [legL, legR, armL].forEach(function (m) { m.userData.shared = true; });
+    body.userData.shared = false;
     root.add(body, legL, legR, armL);
-    if (gfx.shadows) { body.castShadow = true; legL.castShadow = legR.castShadow = true; }
-    const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.75; bubble.visible = false; bubble.userData.shared = true;
+    if (gfx.shadows) { body.castShadow = true; legL.castShadow = legR.castShadow = true; armL.castShadow = true; }
+    else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
+    const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.45; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.4; root.add(nm); }
+    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.1; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble };
     return root;
   }
 
   function buildBotMesh(e) {
-    if (gfx.fancy) return buildFancyMesh(e);
+    if (gfx.real) return buildRealMesh(e);
     const root = new T.Group();
     const bodyMat = new T.MeshLambertMaterial({ vertexColors: true });
     const body = new T.Mesh(shared['body' + e.team], bodyMat);
@@ -369,18 +383,32 @@
 
   function buildGun() {
     gun = new T.Group();
-    const mk = function (w, h, d, color, x, y, z) {
-      const m = new T.Mesh(new T.BoxGeometry(w, h, d), new T.MeshLambertMaterial({ color: color, depthTest: false }));
+    const REAL = !!gfx.real, accent = ES.TEAMS[myTeam()].color;
+    const mk = function (w, h, d, color, x, y, z, metal) {
+      const mat = REAL ? new T.MeshStandardMaterial({ color: color, roughness: metal ? 0.45 : 0.7, metalness: metal ? 0.2 : 0.05, depthTest: false })
+                       : new T.MeshLambertMaterial({ color: color, depthTest: false });
+      const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
       m.position.set(x, y, z); m.renderOrder = 20; gun.add(m); return m;
     };
-    mk(0.075, 0.1, 0.38, 0x2a3550, 0, 0, 0);
-    mk(0.08, 0.03, 0.22, ES.TEAMS[myTeam()].color, 0, 0.06, -0.04);
-    mk(0.04, 0.04, 0.2, 0x1a2035, 0, 0.015, -0.28);
-    mk(0.05, 0.12, 0.07, 0x1a2035, 0, -0.1, 0.1);
-    mk(0.05, 0.05, 0.03, 0xffe14d, 0, 0.015, -0.39);
+    if (REAL) {                                          // a proper rifle shape
+      mk(0.07, 0.1, 0.4, 0x4a5260, 0, 0, 0, true);                     // receiver
+      mk(0.06, 0.07, 0.3, 0x353b45, 0, 0.0, -0.3, false);              // handguard
+      mk(0.026, 0.026, 0.3, 0x2a2f38, 0, 0.012, -0.55, true);          // barrel
+      mk(0.05, 0.16, 0.07, 0x1d2127, 0, -0.12, -0.02, false);          // magazine
+      mk(0.05, 0.1, 0.06, 0x1d2127, 0, -0.09, 0.14, false);            // grip
+      mk(0.06, 0.1, 0.2, 0x3a3f33, 0, -0.01, 0.28, false);             // stock
+      mk(0.03, 0.04, 0.1, 0x15181c, 0, 0.07, -0.02, true);             // sight
+      mk(0.075, 0.018, 0.12, accent, 0, 0.056, -0.2, false);           // team-colour stripe
+    } else {
+      mk(0.075, 0.1, 0.38, 0x2a3550, 0, 0, 0);
+      mk(0.08, 0.03, 0.22, ES.TEAMS[myTeam()].color, 0, 0.06, -0.04);
+      mk(0.04, 0.04, 0.2, 0x1a2035, 0, 0.015, -0.28);
+      mk(0.05, 0.12, 0.07, 0x1a2035, 0, -0.1, 0.1);
+      mk(0.05, 0.05, 0.03, 0xffe14d, 0, 0.015, -0.39);
+    }
     muzzle = new T.Mesh(new T.PlaneGeometry(0.3, 0.3), new T.MeshBasicMaterial({ color: 0xffe98a, transparent: true, opacity: 0.95, depthTest: false, side: T.DoubleSide }));
-    muzzle.position.set(0, 0.015, -0.46); muzzle.renderOrder = 21; muzzle.visible = false; gun.add(muzzle);
-    if (gfx.fancy) {                                   // glowing energy strip + bigger muzzle flash
+    muzzle.position.set(0, 0.012, REAL ? -0.74 : -0.46); muzzle.renderOrder = 21; muzzle.visible = false; gun.add(muzzle);
+    if (gfx.fx) {                                   // glowing energy strip + bigger muzzle flash
       const glow = new T.Mesh(new T.BoxGeometry(0.03, 0.03, 0.26), new T.MeshBasicMaterial({ color: myTeam() === 0 ? 0x7fe3ff : 0xffb08a, depthTest: false }));
       glow.position.set(0.0, 0.085, -0.04); glow.renderOrder = 22; gun.add(glow);
       muzzle.scale.set(1.5, 1.5, 1);
@@ -393,14 +421,14 @@
 
   function buildEffects() {
     tracers = []; sparks = []; tracerI = 0;
-    const tg = new T.BoxGeometry(gfx.fancy ? 0.085 : 0.04, gfx.fancy ? 0.085 : 0.04, 1);
+    const tg = new T.BoxGeometry(gfx.fx ? 0.085 : 0.04, gfx.fx ? 0.085 : 0.04, 1);
     for (let i = 0; i < 14; i++) {
-      const m = new T.Mesh(tg, new T.MeshBasicMaterial(gfx.fancy ? { color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true, opacity: 0 }));
+      const m = new T.Mesh(tg, new T.MeshBasicMaterial(gfx.fx ? { color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true, opacity: 0 }));
       m.visible = false; m.userData.shared = true; scene.add(m);
       tracers.push({ mesh: m, life: 0 });
     }
     shared.tracerGeo = tg;
-    if (gfx.fancy) {                                   // pool of flash rings that pop where a laser hits
+    if (gfx.fx) {                                   // pool of flash rings that pop where a laser hits
       shared.ringGeo = new T.RingGeometry(0.12, 0.2, 18);
       for (let i = 0; i < 8; i++) {
         const m = new T.Mesh(shared.ringGeo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
@@ -409,8 +437,8 @@
     }
     const sg = new T.BoxGeometry(0.1, 0.1, 0.1);
     shared.sparkGeo = sg;
-    for (let i = 0; i < (gfx.fancy ? 70 : 28); i++) {
-      const m = new T.Mesh(sg, new T.MeshBasicMaterial(gfx.fancy ? { color: 0xffffff, transparent: true, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true }));
+    for (let i = 0; i < (gfx.fx ? 70 : 28); i++) {
+      const m = new T.Mesh(sg, new T.MeshBasicMaterial(gfx.fx ? { color: 0xffffff, transparent: true, blending: T.AdditiveBlending, depthWrite: false } : { color: 0xffffff, transparent: true }));
       m.visible = false; m.userData.shared = true; scene.add(m);
       sparks.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0 });
     }
@@ -544,7 +572,7 @@
   };
 
   function burst(x, y, z, color, n) {
-    if (gfx.fancy) {
+    if (gfx.fx) {
       const r = rings[ringI++ % rings.length]; r.life = 0.32; r.mesh.position.set(x, y, z); r.mesh.visible = true; r.mesh.material.color.setHex(color); r.mesh.material.opacity = 0.9; r.mesh.scale.set(1, 1, 1);
       r.mesh.lookAt(camera.position);
       n = n * 3;
@@ -556,7 +584,7 @@
       if (s.life > 0) continue;
       s.life = 0.35 + Math.random() * 0.2; k++;
       s.mesh.position.set(x, y, z); s.mesh.visible = true;
-      s.mesh.material.color.setHex(gfx.fancy && k % 3 === 0 ? 0xffffff : color); s.mesh.material.opacity = 1;
+      s.mesh.material.color.setHex(gfx.fx && k % 3 === 0 ? 0xffffff : color); s.mesh.material.opacity = 1;
       s.vx = (Math.random() - 0.5) * 5; s.vy = Math.random() * 4 + 1; s.vz = (Math.random() - 0.5) * 5;
     }
   }
@@ -998,23 +1026,34 @@
     }
   }
 
-  /* Fancy is too heavy for this computer: quietly switch to a lighter look without restarting the match */
-  function downgradeFancy() {
-    if (!gfx.fancy || G.downgraded) return;
-    G.downgraded = true; fpsTipShown = true;
-    gfx = Object.assign({}, gfx, { fancy: false, shadows: false, scale: 0.7, maxPR: 1, sparks: 8, fog: 60 });
+  /* This computer is too slow for the level it picked: step down ONE level without restarting the match
+     (Ultra -> High -> Medium -> Low). Only things that can change on the fly are changed:
+     sharpness, shadows, glow effects and how far you can see. */
+  function stepDown() {
+    const i = ES.GFX_ORDER.indexOf(G.level);
+    if (i <= 0) return;
+    const to = ES.GFX_ORDER[i - 1], P = ES.GFX[to];
+    G.level = to; G.downgraded = true; fpsTipShown = true; fpsSlowT = 0;
     try {
-      if (sunLight) sunLight.castShadow = false;
-      renderer.shadowMap.enabled = false;
-      scene.traverse(function (o) { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { m.needsUpdate = true; }); });
-      outlineMeshes.forEach(function (m) { m.visible = false; });
-      if (world && world.setExtras) world.setExtras(false);
-      scene.fog.far = 60;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1) * 0.7);
+      gfx.scale = P.scale; gfx.maxPR = P.maxPR; gfx.sparks = P.sparks; gfx.fog = P.fog; gfx.fx = !!P.fx;
+      if (!P.shadows && gfx.shadows) {
+        gfx.shadows = false;
+        if (sunLight) sunLight.castShadow = false;
+        renderer.shadowMap.enabled = false;
+        scene.traverse(function (o) { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { m.needsUpdate = true; }); });
+      } else if (P.shadows && sunLight && sunLight.shadow) {          // still has shadows: make the map smaller (cheaper)
+        if (sunLight.shadow.map) { sunLight.shadow.map.dispose(); sunLight.shadow.map = null; }
+        sunLight.shadow.mapSize.set(P.shadowSize || 1024, P.shadowSize || 1024);
+        renderer.shadowMap.type = P.soft ? T.PCFSoftShadowMap : T.PCFShadowMap;
+        scene.traverse(function (o) { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { m.needsUpdate = true; }); });
+      }
+      if (!P.world && world && world.setExtras) world.setExtras(false);
+      scene.fog.far = P.fog; camera.far = P.far || 140; camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, P.maxPR) * P.scale);
       renderer.setSize(window.innerWidth, window.innerHeight, false);
-      ES.settings.gfx = 'low'; ES.saveSettings();     // next time start on Low
+      ES.settings.gfx = to; ES.saveSettings();                       // next time start at this level
     } catch (e) { /* never break the game over graphics */ }
-    toast('Switched to faster graphics so the game stays smooth ⚡', 5);
+    toast('Graphics lowered to ' + P.label.split(' (')[0] + ' to keep the game smooth ⚡', 5);
   }
 
   function measureFps(dt) {
@@ -1025,8 +1064,8 @@
       if (S.phase === 'play' && !S.paused && !S.qOpen) {
         S.fpsMin = Math.min(S.fpsMin, fps); S.fpsSum += fps; S.fpsN++;
         fpsSlowT = fps < 28 ? fpsSlowT + fpsTime : 0;
-        if (gfx.fancy && fpsSlowT > 4) downgradeFancy();
-        if (fpsSlowT > 6 && !fpsTipShown && st.gfx !== 'low') { fpsTipShown = true; toast('Feels slow? Press Esc, quit, and choose Graphics: Low.', 5); }
+        if (G.level !== 'low' && !G.noStepDown && fpsSlowT > 4) stepDown();
+        if (fpsSlowT > 6 && !fpsTipShown && G.level !== 'low') { fpsTipShown = true; toast('Feels slow? Press Esc, quit, and choose Graphics: Low.', 5); }
       }
       fpsFrames = 0; fpsTime = 0;
     }

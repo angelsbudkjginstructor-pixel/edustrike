@@ -31,7 +31,7 @@
     Array.prototype.forEach.call($('set-diff').children, function (b) { b.classList.toggle('on', b.dataset.v === s.diff); });
     $('set-gmin').value = s.gradeMin; $('set-gmax').value = s.gradeMax;
     $('set-qtime').value = s.qTime; $('set-reward').value = s.reward; $('set-wrong').value = s.wrongAmmo; $('set-ansmode').value = s.answerMode;
-    $('set-gfx').value = s.gfx; $('set-fps').checked = s.showFps; $('set-aim').checked = s.aimAssist; $('set-radar').checked = s.radar;
+    $('set-gfx').value = ES.gfxKey(s.gfx); $('set-fps').checked = s.showFps; $('set-aim').checked = s.aimAssist; $('set-radar').checked = s.radar;
     $('set-sound').checked = s.sound; $('set-sens').value = s.sens; $('set-fov').value = s.fov; $('set-look').value = s.lookMode;
     Array.prototype.forEach.call($('set-subjects').children, function (c) { c.classList.toggle('on', s.subjects[c.dataset.k] !== false); });
     $('set-scream').checked = s.scream !== false; $('set-track').checked = s.trackMusic !== false; $('set-announcer').checked = s.announcer !== false;
