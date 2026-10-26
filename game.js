@@ -27,6 +27,7 @@
   let toastT = 0, closeTimer = 0, relockTimer = 0;
   let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
+  let RB = null, RBV = null;            // Rescue & Bomb mode: RB = the rules engine (rb.js), RBV = the 3D pieces (null in normal mode)
   const myTeam = function () { return NET ? NET.team : 0; };
   const r2 = function (v) { return Math.round(v * 100) / 100; };
   const netSend = function (m) { return ES.session ? ES.session.send(m) : false; };
@@ -142,13 +143,23 @@
 
     quiz = ES.createQuiz(st, NET ? opts.net.topics : null);
     G.world = world; G.ents = ents; G.player = player;   // the bot brains read these
+    /* ---- Rescue & Bomb mode (solo menu choice, or the teacher's choice in a class match) ---- */
+    RB = null; RBV = null; G.rb = null;
+    const rbMode = NET ? (opts.net.mode === 'rb') : (st.mode === 'rb');
+    if (rbMode && world.rbSpots) {
+      const rc = ES.rbClean(NET ? opts.net.rounds : st.rbRounds, NET ? opts.net.rtime : st.rbMinutes);
+      if (!NET) ents.forEach(function (e, i) { e.eid = i; });                    // solo: the player is 0, the bots follow
+      RB = { eng: ES.createRB({ rounds: rc.rounds, minutes: rc.minutes, spots: world.rbSpots, ents: function () { return ents; }, hook: NET ? null : rbHook }), cfg: rc };
+      if (!NET) G.rb = RB.eng;                                                   // bots read the rules from here
+    }
 
     S = {
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
-      total: (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
+      total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
+      qMission: '', qMax: 0, bannerT: 0,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
     };
@@ -159,6 +170,7 @@
     radarBase = document.createElement('canvas'); radarBase.width = radarBase.height = 132;
     world.drawRadarBase(radarBase.getContext('2d'), 132);
     radarCtx = $('radar').getContext('2d');
+    if (RB) buildRB();
 
     addListeners();
     resetHudViews();
@@ -172,7 +184,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false; NET = null;
+    G.active = false; NET = null; RB = null; RBV = null; G.rb = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -190,7 +202,7 @@
     } catch (e) { /* ignore - leaving the game must never fail */ }
     renderer = null; scene = null; world = null; shared = null;
     const wrap = $('gl-wrap'); if (wrap) wrap.innerHTML = '';
-    ['ov-ready', 'ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard'].forEach(function (id) { show(id, false); });
+    ['ov-ready', 'ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard', 'ov-round', 'rb-bar', 'rb-hint'].forEach(function (id) { show(id, false); });
   };
 
   /* =====================================================================
@@ -274,11 +286,7 @@
         { g: new T.BoxGeometry(0.1, 0.3, 0.02), y: 1.2, z: 0.335, c: tc },                           // team stripe on the backpack
         { g: new T.CapsuleGeometry(0.065, 0.26, 2, 6), rx: Math.PI / 2, x: 0.27, y: 1.18, z: -0.14, c: fat },   // right arm
         { g: new T.SphereGeometry(0.07, 6, 5), x: 0.25, y: 1.13, z: -0.34, c: dark },                // glove
-        { g: new T.BoxGeometry(0.07, 0.1, 0.66), x: 0.25, y: 1.12, z: -0.42, c: gunC },              // rifle
-        { g: new T.CylinderGeometry(0.018, 0.018, 0.4, 6), rx: Math.PI / 2, x: 0.25, y: 1.14, z: -0.9, c: gunC },
-        { g: new T.BoxGeometry(0.05, 0.16, 0.07), x: 0.25, y: 1.0, z: -0.38, c: gunC },              // magazine
-        { g: new T.BoxGeometry(0.06, 0.12, 0.22), x: 0.25, y: 1.14, z: -0.02, c: gunC },             // stock
-        { g: new T.BoxGeometry(0.03, 0.04, 0.1), x: 0.25, y: 1.2, z: -0.5, c: dark }                 // sight
+        { g: new T.BoxGeometry(0.01, 0.01, 0.01), x: 0.25, y: 1.2, z: -0.5, c: dark }                  // (the rifle is a separate model, see buildSoldierGuns)
       ];
       if (ULTRA) parts.push(
         { g: new T.BoxGeometry(0.16, 0.08, 0.2), x: -0.3, y: 1.4, c: tc },                           // shoulder pads
@@ -312,8 +320,7 @@
         { x: 0, y: 1.86, z: 0, w: 0.05, h: 0.18, d: 0.05, c: c },
         { x: -0.36, y: 1.1, z: -0.05, w: 0.14, h: 0.5, d: 0.14, c: c },
         { x: 0.36, y: 1.1, z: -0.12, w: 0.14, h: 0.4, d: 0.3, c: c },
-        { x: 0.3, y: 1.08, z: -0.3, w: 0.1, h: 0.12, d: 0.46, c: 0x2a2f3a },
-        { x: 0.3, y: 1.08, z: -0.55, w: 0.07, h: 0.07, d: 0.07, c: 0xffe14d }
+        { x: 0.3, y: 1.08, z: -0.05, w: 0.1, h: 0.12, d: 0.1, c: 0x2a2f3a }
       ]);
     });
     shared.leg = new T.BoxGeometry(0.18, 0.8, 0.2); shared.leg.translate(0, -0.4, 0);
@@ -329,6 +336,7 @@
     shared.bubbleTex = new T.CanvasTexture(qc);
     shared.bubbleMat = new T.SpriteMaterial({ map: shared.bubbleTex, depthTest: false });
     if (gfx.real) buildRealShared();
+    buildSoldierGuns();
   }
 
   function makeNameSprite(name, css, seeThroughWalls) {
@@ -353,12 +361,13 @@
     [legL, legR, armL].forEach(function (m) { m.userData.shared = true; });
     body.userData.shared = false;
     root.add(body, legL, legR, armL);
+    const gunMesh = addSoldierGun(root, true);
     if (gfx.shadows) { body.castShadow = true; legL.castShadow = legR.castShadow = true; armL.castShadow = true; }
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.45; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
     if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.1; root.add(nm); }
-    root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble };
+    root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble, gunMesh: gunMesh, curW: 'pistol' };
     return root;
   }
 
@@ -372,25 +381,99 @@
     legL.position.set(-0.14, 0.8, 0); legR.position.set(0.14, 0.8, 0);
     legL.userData.shared = true; legR.userData.shared = true;
     root.add(body, legL, legR);
+    const gunMesh = addSoldierGun(root, false);
     if (gfx.shadows) body.castShadow = true;
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.7; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
     if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.2; root.add(nm); }
-    root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, bubble: bubble };
+    root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, bubble: bubble, gunMesh: gunMesh, curW: 'pistol' };
     return root;
   }
 
-  function buildGun() {
+  /* ---------- how every weapon looks ----------
+     Each gun is a short list of simple shapes: [shape, size..., colour, x, y, z]   (z negative = forward)
+       'b' box [w, h, d]   'c' round tube along the barrel [radius, length]   'k' cone pointing forward [radius, length]
+     colour 'acc' = the weapon's own colour (yellow / orange / green / red).  k = how much bigger it is on a soldier than in your hands. */
+  const GUN_SPECS = {
+    rapid: { k: 1.7, muzzle: -0.38, parts: [                       // Rapid Blaster: short, with a long double magazine and yellow stripes
+      ['b', 0.07, 0.1, 0.3, 0x30343c, 0, 0, 0], ['c', 0.018, 0.22, 0x1d2127, 0, 0.012, -0.25], ['b', 0.06, 0.06, 0.09, 'acc', 0, 0.012, -0.34],
+      ['b', 0.05, 0.22, 0.07, 0x1d2127, 0, -0.15, 0.04], ['b', 0.05, 0.2, 0.07, 0x1d2127, 0, -0.14, -0.06],
+      ['b', 0.075, 0.02, 0.22, 'acc', 0, 0.06, -0.02], ['b', 0.05, 0.1, 0.06, 0x252a31, 0, -0.09, 0.16], ['b', 0.06, 0.09, 0.14, 0x2f343c, 0, -0.01, 0.22]] },
+    scatter: { k: 1.7, muzzle: -0.56, parts: [                     // Scatter Blaster: a fat shotgun with two barrels and a wooden pump
+      ['b', 0.09, 0.11, 0.26, 0x3a3f48, 0, 0, 0.0], ['c', 0.03, 0.52, 0x262a31, -0.032, 0.02, -0.38], ['c', 0.03, 0.52, 0x262a31, 0.032, 0.02, -0.38],
+      ['b', 0.1, 0.07, 0.2, 0x6b4423, 0, -0.04, -0.26], ['b', 0.07, 0.11, 0.3, 0x6b4423, 0, -0.02, 0.25], ['b', 0.05, 0.1, 0.06, 0x262a31, 0, -0.09, 0.1],
+      ['b', 0.12, 0.03, 0.05, 'acc', 0, 0.02, -0.66], ['b', 0.095, 0.02, 0.1, 'acc', 0, 0.06, 0.0]] },
+    sniper: { k: 1.5, muzzle: -0.98, parts: [                      // Sniper Laser: a very long barrel, a big scope and a bipod
+      ['b', 0.065, 0.1, 0.4, 0x2a2f38, 0, 0, 0], ['c', 0.016, 0.8, 0x1d2127, 0, 0.015, -0.6], ['b', 0.04, 0.04, 0.06, 'acc', 0, 0.015, -0.99],
+      ['c', 0.036, 0.3, 0x15181c, 0, 0.1, -0.06], ['b', 0.05, 0.05, 0.02, 'acc', 0, 0.1, -0.22], ['b', 0.02, 0.05, 0.04, 0x15181c, 0, 0.065, -0.14],
+      ['b', 0.015, 0.14, 0.015, 0x1d2127, -0.03, -0.07, -0.55], ['b', 0.015, 0.14, 0.015, 0x1d2127, 0.03, -0.07, -0.55],
+      ['b', 0.06, 0.12, 0.3, 0x3a3f33, 0, -0.01, 0.3], ['b', 0.045, 0.12, 0.06, 0x252a31, 0, -0.09, 0.1], ['b', 0.045, 0.1, 0.06, 0x1d2127, 0, -0.09, -0.06]] },
+    rocket: { k: 1.3, muzzle: -0.72, parts: [                      // Rocket Blast: a big green tube with a red rocket sticking out
+      ['c', 0.065, 0.8, 0x4a5236, 0, 0.02, -0.2], ['c', 0.082, 0.1, 0x353b28, 0, 0.02, 0.2], ['c', 0.07, 0.04, 'acc', 0, 0.02, -0.5],
+      ['c', 0.07, 0.04, 'acc', 0, 0.02, -0.05], ['k', 0.05, 0.16, 'acc', 0, 0.02, -0.68], ['b', 0.06, 0.1, 0.14, 0x30343c, 0, -0.1, -0.05],
+      ['b', 0.045, 0.1, 0.06, 0x252a31, 0, -0.14, 0.08], ['b', 0.03, 0.06, 0.12, 0x15181c, 0, 0.1, -0.1]] },
+    rifle: { k: 1, muzzle: 0, parts: [                             // what a soldier holds with the normal blaster
+      ['b', 0.07, 0.1, 0.66, 0x1d2127, 0, 0, -0.24], ['c', 0.018, 0.4, 0x1d2127, 0, 0.02, -0.72], ['b', 0.05, 0.16, 0.07, 0x1d2127, 0, -0.12, -0.2],
+      ['b', 0.06, 0.12, 0.22, 0x1d2127, 0, 0.02, 0.16], ['b', 0.03, 0.04, 0.1, 0x22262c, 0, 0.08, -0.32]] }
+  };
+  function specGeo(sp, k, acc) {                           // one merged soldier-sized model of a gun
+    const list = [];
+    sp.parts.forEach(function (q) {
+      const col = q[q.length - 4] === 'acc' ? acc : q[q.length - 4], x = q[q.length - 3] * k, y = q[q.length - 2] * k, z = q[q.length - 1] * k;
+      let g;
+      if (q[0] === 'b') g = new T.BoxGeometry(q[1] * k, q[2] * k, q[3] * k);
+      else if (q[0] === 'c') { g = new T.CylinderGeometry(q[1] * k, q[1] * k, q[2] * k, 8); g.rotateX(Math.PI / 2); }
+      else { g = new T.ConeGeometry(q[1] * k, q[2] * k, 8); g.rotateX(-Math.PI / 2); }
+      list.push({ g: g, x: x, y: y, z: z, c: col });
+    });
+    return mergeParts(list);
+  }
+  function buildSoldierGuns() {                            // shared by every soldier (so 30 soldiers still cost little)
+    shared.wgeo = {};
+    shared.wgeo.pistol = specGeo(GUN_SPECS.rifle, 1, 0);
+    ES.WEAPON_IDS.forEach(function (id) { shared.wgeo[id] = specGeo(GUN_SPECS[id], GUN_SPECS[id].k, ES.WEAPONS[id].color); });
+    shared.wMat = gfx.real ? new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 }) : new T.MeshLambertMaterial({ vertexColors: true });
+  }
+  function addSoldierGun(root, real) {
+    const m = new T.Mesh(shared.wgeo.pistol, shared.wMat);
+    m.position.set(0.25, real ? 1.12 : 1.08, real ? -0.18 : -0.1); m.userData.shared = true; m.castShadow = !!gfx.shadows;
+    root.add(m); return m;
+  }
+  /* which weapon should this soldier be holding right now? (0 = the normal blaster) */
+  function wantWeapon(e) {
+    if (e.wShowT > 0 && ES.WEAPONS[e.wShow]) return e.wShow;
+    return 'pistol';
+  }
+
+  let gunId = '';
+  function buildGun() { gunId = ''; mountGun('pistol'); }
+  /* put the right gun in your hands (called when you pick up or lose a bonus weapon) */
+  function mountGun(id) {
+    if (gunId === id) return;
+    gunId = id;
+    if (gun) { camera.remove(gun); gun.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
     gun = new T.Group();
-    const REAL = !!gfx.real, accent = ES.TEAMS[myTeam()].color;
-    const mk = function (w, h, d, color, x, y, z, metal) {
-      const mat = REAL ? new T.MeshStandardMaterial({ color: color, roughness: metal ? 0.45 : 0.7, metalness: metal ? 0.2 : 0.05, depthTest: false })
-                       : new T.MeshLambertMaterial({ color: color, depthTest: false });
-      const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z); m.renderOrder = 20; gun.add(m); return m;
+    const REAL = !!gfx.real, accent = ES.TEAMS[myTeam()].color, spec = GUN_SPECS[id];
+    const mat = function (color, metal) {
+      return REAL ? new T.MeshStandardMaterial({ color: color, roughness: metal ? 0.45 : 0.7, metalness: metal ? 0.2 : 0.05, depthTest: false })
+                  : new T.MeshLambertMaterial({ color: color, depthTest: false });
     };
-    if (REAL) {                                          // a proper rifle shape
+    const add = function (geo, color, x, y, z, metal) { const m = new T.Mesh(geo, mat(color, metal)); m.position.set(x, y, z); m.renderOrder = 20; gun.add(m); return m; };
+    const mk = function (w, h, d, color, x, y, z, metal) { return add(new T.BoxGeometry(w, h, d), color, x, y, z, metal); };
+    let muzzleZ;
+    if (spec) {                                          // a bonus weapon: its own shape
+      const acc = ES.WEAPONS[id].color;
+      spec.parts.forEach(function (q) {
+        const col = q[q.length - 4] === 'acc' ? acc : q[q.length - 4], x = q[q.length - 3], y = q[q.length - 2], z = q[q.length - 1];
+        let g;
+        if (q[0] === 'b') g = new T.BoxGeometry(q[1], q[2], q[3]);
+        else if (q[0] === 'c') { g = new T.CylinderGeometry(q[1], q[1], q[2], 10); g.rotateX(Math.PI / 2); }
+        else { g = new T.ConeGeometry(q[1], q[2], 10); g.rotateX(-Math.PI / 2); }
+        add(g, col, x, y, z, q[0] === 'c');
+      });
+      muzzleZ = spec.muzzle;
+    } else if (REAL) {                                   // your normal blaster, a proper rifle shape
       mk(0.07, 0.1, 0.4, 0x4a5260, 0, 0, 0, true);                     // receiver
       mk(0.06, 0.07, 0.3, 0x353b45, 0, 0.0, -0.3, false);              // handguard
       mk(0.026, 0.026, 0.3, 0x2a2f38, 0, 0.012, -0.55, true);          // barrel
@@ -399,19 +482,22 @@
       mk(0.06, 0.1, 0.2, 0x3a3f33, 0, -0.01, 0.28, false);             // stock
       mk(0.03, 0.04, 0.1, 0x15181c, 0, 0.07, -0.02, true);             // sight
       mk(0.075, 0.018, 0.12, accent, 0, 0.056, -0.2, false);           // team-colour stripe
+      muzzleZ = -0.74;
     } else {
       mk(0.075, 0.1, 0.38, 0x2a3550, 0, 0, 0);
-      mk(0.08, 0.03, 0.22, ES.TEAMS[myTeam()].color, 0, 0.06, -0.04);
+      mk(0.08, 0.03, 0.22, accent, 0, 0.06, -0.04);
       mk(0.04, 0.04, 0.2, 0x1a2035, 0, 0.015, -0.28);
       mk(0.05, 0.12, 0.07, 0x1a2035, 0, -0.1, 0.1);
       mk(0.05, 0.05, 0.03, 0xffe14d, 0, 0.015, -0.39);
+      muzzleZ = -0.46;
     }
-    muzzle = new T.Mesh(new T.PlaneGeometry(0.3, 0.3), new T.MeshBasicMaterial({ color: 0xffe98a, transparent: true, opacity: 0.95, depthTest: false, side: T.DoubleSide }));
-    muzzle.position.set(0, 0.012, REAL ? -0.74 : -0.46); muzzle.renderOrder = 21; muzzle.visible = false; gun.add(muzzle);
-    if (gfx.fx) {                                   // glowing energy strip + bigger muzzle flash
+    const big = id === 'rocket' || id === 'scatter';
+    muzzle = new T.Mesh(new T.PlaneGeometry(0.3, 0.3), new T.MeshBasicMaterial({ color: id === 'pistol' ? 0xffe98a : ES.WEAPONS[id].color, transparent: true, opacity: 0.95, depthTest: false, side: T.DoubleSide }));
+    muzzle.position.set(0, 0.012, muzzleZ); muzzle.renderOrder = 21; muzzle.visible = false; muzzle.scale.setScalar(big ? 1.6 : 1); gun.add(muzzle);
+    if (gfx.fx) {                                        // Ultra: glowing energy strip + bigger muzzle flash
       const glow = new T.Mesh(new T.BoxGeometry(0.03, 0.03, 0.26), new T.MeshBasicMaterial({ color: myTeam() === 0 ? 0x7fe3ff : 0xffb08a, depthTest: false }));
       glow.position.set(0.0, 0.085, -0.04); glow.renderOrder = 22; gun.add(glow);
-      muzzle.scale.set(1.5, 1.5, 1);
+      muzzle.scale.multiplyScalar(1.5);
     }
     gun.scale.set(0.55, 0.55, 0.55);
     gun.position.set(0.2, -0.18, -0.5);
@@ -504,7 +590,7 @@
   };
 
   G.damage = function (target, amt, attacker, head) {
-    if (!target.alive || target.protT > 0 || S.phase !== 'play') return false;
+    if (!target.alive || target.protT > 0 || S.phase !== 'play' || (RB && RB.eng.st.ph !== 0)) return false;       // no tagging while the round banner shows
     target.hp -= amt; target.flashT = 0.1;
     if (target.isPlayer) {
       S.sinceHurt = 0; S.dmgFlash = Math.min(0.8, 0.35 + amt / 60);
@@ -524,7 +610,8 @@
     burst(target.x, target.y + 1, target.z, ES.TEAMS[target.team].color, 12);
     if (!target.isPlayer) G.soundAt('scream', target.x, target.z, 0.9);       // bots scream too (quieter when far away)
     if (attacker) {
-      attacker.kills++; S.score[attacker.team]++;
+      attacker.kills++;
+      if (RB) RB.eng.killed(attacker.team); else S.score[attacker.team]++;      // Rescue & Bomb: tags still count (they break a tie), but the score is rounds won
       feed(attacker, target, head); announceKill(attacker);
     }
     if (target.isPlayer) {
@@ -536,12 +623,12 @@
       ES.audio.sfx('die'); ES.audio.sfx('scream', 1);
     }
     if (attacker && attacker.isPlayer) { S.stats.kills++; ES.audio.sfx('kill'); }
-    if (S.score[0] >= S.target || S.score[1] >= S.target) endMatch('score');
+    if (!RB && (S.score[0] >= S.target || S.score[1] >= S.target)) endMatch('score');
   }
 
   /* announcer: first blood, double / triple kill (your own tags within 5 seconds of each other) */
   function announceKill(attacker) {
-    if (!S.fbDone) { S.fbDone = true; ES.audio.announce('first'); }
+    if (!S.fbDone) { S.fbDone = true; if (!RB) ES.audio.announce('first'); }
     if (attacker && attacker.isPlayer) {
       const now = performance.now();
       S.multi = (S.multiT && now - S.multiT < 5000) ? S.multi + 1 : 1; S.multiT = now;
@@ -601,13 +688,13 @@
   /* ---------------- bonus weapons ---------------- */
   function giveWeapon(id) {
     const W = ES.WEAPONS[id]; if (!W || id === 'pistol' || !S) return;
-    S.weapon = id; S.wAmmo = W.mag; S.wTime = W.secs; S.fireCd = 0.2;
+    S.weapon = id; S.wAmmo = W.mag; S.wTime = W.secs; S.fireCd = 0.2; mountGun(id);
     toast(W.icon + ' ' + W.name + '! ' + W.mag + ' shots, ' + W.secs + ' seconds', 3);
     ES.audio.sfx('pickup'); ES.audio.announce && ES.audio.announce('weapon');
   }
   function dropWeapon(silent) {
     if (!S || S.weapon === 'pistol') return;
-    S.weapon = 'pistol'; S.wAmmo = 0; S.wTime = 0;
+    S.weapon = 'pistol'; S.wAmmo = 0; S.wTime = 0; mountGun('pistol');
     if (!silent) { toast('Back to your blaster 🔫', 1.6); ES.audio.sfx('wpnEnd'); }
   }
   function randomWeapon() {
@@ -725,12 +812,16 @@
   /* =====================================================================
      QUESTION  ->  AMMO
      ===================================================================== */
-  function openQuestion() {
+  /* kind = '' (a normal ammo question, key R) or 'rescue' / 'plant' / 'defuse' (a mission question, key E in Rescue & Bomb) */
+  function openQuestion(kind) {
     if (S.phase !== 'play' || S.paused || S.qOpen || !player.alive) return;
-    if (S.ammo >= AMMO.max) { toast('Your blaster is already full! ⚡', 1.6); return; }
+    if (!kind && S.ammo >= AMMO.max) { toast('Your blaster is already full! ⚡', 1.6); return; }
     if (S.qCd > 0) { toast('Next question in ' + Math.ceil(S.qCd) + ' s…', 1.2); return; }
     clearTimeout(closeTimer);
-    S.cur = quiz.next(); S.qOpen = true; S.qState = 'asking'; S.qTime = st.qTime; fireHeld = false;
+    S.qMission = kind || '';
+    S.qMax = st.qTime;                                                     // seconds to answer (0 = no limit)
+    if (kind === 'defuse' && RB) S.qMax = Math.max(2, Math.min(st.qTime || 99, RB.eng.st.b.t - 0.5));   // the bomb will not wait for a slow answer
+    S.cur = quiz.next(); S.qOpen = true; S.qState = 'asking'; S.qTime = S.qMax; fireHeld = false;
     const q = S.cur, sub = ES.SUBJECTS[q.subject];
     const panel = $('qp');
     panel.style.setProperty('--sub', sub.color);
@@ -747,9 +838,9 @@
       b.addEventListener('click', function () { chooseAnswer(i); });
       box.appendChild(b);
     });
-    $('qp-reward').textContent = '+' + st.reward + ' ⚡ ammo for a correct answer';
+    $('qp-reward').textContent = kind ? RB_TXT[kind].ask + '  (+' + st.reward + ' ⚡ too)' : '+' + st.reward + ' ⚡ ammo for a correct answer';
     $('qp-fb').className = 'qfb hidden'; $('qp-fb').innerHTML = '';
-    $('qp-timer').classList.toggle('hidden', !st.qTime);
+    $('qp-timer').classList.toggle('hidden', !S.qMax);
     $('qp-fill').style.width = '100%'; $('qp-fill').classList.remove('urgent');
     show('qp', true);
     ES.audio.sfx('open'); ES.audio.music.muffle(true);   // music goes soft so students can think
@@ -776,13 +867,14 @@
       S.qCd = 2;
       fb.className = 'qfb good';
       const earn = S.streak > 0 && S.streak % 3 === 0;
-      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
+      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (S.qMission ? '<br><b>' + RB_TXT[S.qMission].done + '</b>' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
+      if (S.qMission) rbDo(S.qMission);
       if (earn) setTimeout(function () { if (S && S.phase === 'play') earnWeapon(); }, 1150);
       ES.audio.sfx('correct');
       setTimeout(function () { ES.audio.sfx('reload'); }, 520); setTimeout(function () { ES.audio.sfx('reload', 0.9); }, 800);   // click-clack: blaster reloaded
       closeTimer = setTimeout(function () { closeQuestion(); }, 1100);
     } else {
-      S.streak = 0; S.qCd = 4;
+      S.streak = 0; S.qCd = S.qMission ? 2 : 4;
       const gain = st.wrongAmmo;
       if (gain) S.ammo = Math.min(AMMO.max, S.ammo + gain);
       S.stats.missed.push({ subject: sub, text: q.text, answer: q.opts[q.correct], exp: q.exp });
@@ -946,7 +1038,8 @@
     if (e.repeat) { keys[c] = true; return; }
     keys[c] = true;
     if (S.phase !== 'play') return;
-    if (c === 'KeyR') openQuestion();
+    if (c === 'KeyR') openQuestion('');
+    else if (c === 'KeyE' && RB) openMission();
     else if (c === 'KeyF') fireHeld = true;
     else if (c === 'Space' && player.alive && player.onGround) ES.audio.sfx('jump');
   }
@@ -1074,7 +1167,9 @@
   function tick(dt) {
     // small timers that always run
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').classList.remove('show'); }
+    if (S.bannerT > 0) { S.bannerT -= dt; if (S.bannerT <= 0) show('ov-round', false); }
     updateEffects(dt);
+    if (RBV) updateRB(dt);
     if (world && world.update) world.update(dt);
     if (NET) { netTick(dt); return; }
 
@@ -1088,7 +1183,8 @@
         if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); }
       }
       if (S.countT <= 0) {
-        S.phase = 'play'; show('ov-count', false); toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
+        S.phase = 'play'; show('ov-count', false); ES.audio.sfx('go'); ES.audio.announce('go');
+        if (RB) rbEffects('round', 1); else toast('GO! Press R to charge your blaster ⚡', 2.5);
       }
       return;
     }
@@ -1097,12 +1193,18 @@
     /* ---- playing ---- */
     const slow = S.qOpen && st.answerMode === 'slow';
     const wdt = slow ? dt * 0.15 : dt;
-    S.timeLeft -= wdt; announceClock();
-    if (S.timeLeft <= 0) { S.timeLeft = 0; endMatch('time'); return; }
+    if (RB) {                                          // Rescue & Bomb: the rules engine keeps the round clock + bomb (real time, so slow-motion answering cannot freeze the bomb)
+      RB.eng.update(dt);
+      const rs = RB.eng.st; S.score[0] = rs.wins[0]; S.score[1] = rs.wins[1]; S.timeLeft = rs.tLeft;
+      if (rs.ph === 2) { endMatch('rounds'); return; }
+    } else {
+      S.timeLeft -= wdt; announceClock();
+      if (S.timeLeft <= 0) { S.timeLeft = 0; endMatch('time'); return; }
+    }
     S.qCd = Math.max(0, S.qCd - dt);
-    if (S.qOpen && S.qState === 'asking' && st.qTime) {
+    if (S.qOpen && S.qState === 'asking' && S.qMax) {
       S.qTime -= dt;
-      $('qp-fill').style.width = Math.max(0, 100 * S.qTime / st.qTime) + '%';
+      $('qp-fill').style.width = Math.max(0, 100 * S.qTime / S.qMax) + '%';
       $('qp-fill').classList.toggle('urgent', S.qTime < 6);
       if (S.qTime <= 0) chooseAnswer(-1);
     }
@@ -1220,10 +1322,15 @@
       const sw = e.speed > 0.3 ? Math.sin(e.phase) * 0.8 : 0;
       u.legL.rotation.x = sw; u.legR.rotation.x = -sw;
       if (u.armL) { u.armL.rotation.x = -sw * 0.9; u.body.position.y = e.speed > 0.3 ? Math.abs(Math.sin(e.phase)) * 0.05 : 0; }
-      const answering = e.state === 'answer';
+      const answering = e.state === 'answer' || e.state === 'obj';
       u.bubble.visible = answering;
       m.scale.y = answering ? 0.8 : 1;
       u.bodyMat.emissive.setHex(e.flashT > 0 ? 0x888888 : 0x000000);
+      if (u.gunMesh) {                                    // show the bonus weapon this soldier is holding
+        if (e.wShowT > 0) e.wShowT -= dt;
+        const wantW = wantWeapon(e);
+        if (u.curW !== wantW) { u.curW = wantW; u.gunMesh.geometry = shared.wgeo[wantW]; }
+      }
     }
   }
 
@@ -1270,9 +1377,13 @@
     $('toast').classList.remove('show'); $('feed').innerHTML = '';
     $('radar').classList.toggle('hidden', false);
     const ctrl = $('ready-look'); if (ctrl) ctrl.textContent = st.lookMode === 'lock' ? 'Mouse = look & aim  ·  Left click = fire' : 'Hold RIGHT mouse button (or arrow keys) to look  ·  Left click or F = fire';
-    setText('sc-target', 'First to ' + S.target);
+    setText('sc-target', RB ? 'Round 1 · first to ' + RB.eng.need : 'First to ' + S.target);
     const goal = $('ready-goal');
-    if (goal) goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
+    if (goal) {
+      if (RB) goal.textContent = myTeam() === 0 ? '🔵 Blue: free the 🆘 hostage and bring them to the blue zone, or defuse the 💣! Best of ' + RB.cfg.rounds + ' rounds.' : '🔴 Red: plant the 💣 at the site and keep it safe for 15 seconds! Best of ' + RB.cfg.rounds + ' rounds.';
+      else goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
+    }
+    show('ready-rb', !!RB);
     show('pause-net', !!NET);
     updateHud(0, true);
   }
@@ -1282,6 +1393,7 @@
     setText('sc-blue', String(S.score[0])); setText('sc-red', String(S.score[1]));
     const tl = Math.ceil(S.timeLeft), mm = Math.floor(tl / 60), ss = tl % 60;
     setText('sc-time', mm + ':' + (ss < 10 ? '0' : '') + ss);
+    if (RB) updateRbHud();
     setText('hp-text', String(Math.ceil(p.hp)));
     const hpEl = $('hp-fill'); hpEl.style.width = clamp(p.hp, 0, 100) + '%';
     hpEl.className = p.hp < 30 ? 'low' : '';
@@ -1337,6 +1449,7 @@
   function drawRadar() {
     const c = radarCtx, s = 132 / (world.half * 2);
     c.drawImage(radarBase, 0, 0);
+    if (RB) drawRbRadar(c, s);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (!e.alive || e.isPlayer) continue;
@@ -1368,6 +1481,237 @@
     });
   }
 
+
+  /* =====================================================================
+     RESCUE & BOMB MODE
+     The rules live in rb.js. Here we draw the hostage / bomb / safe zone, play the sounds,
+     show the banners and handle the E key. (Class match: the teacher's page is the referee and
+     sends the round state in every snapshot; solo: this computer runs the rules.)
+     ===================================================================== */
+  const RB_TXT = {
+    rescue: { ask: '🆘 Correct answer = the hostage is freed!', done: '🆘 Freeing the hostage…' },
+    plant: { ask: '💣 Correct answer = the bomb is planted!', done: '💣 Planting the bomb…' },
+    defuse: { ask: '🔧 Correct answer = the bomb is defused!', done: '🔧 Defusing the bomb…' }
+  };
+  const RB_WHY = {
+    saved: '🆘 The hostage is saved!', defuse: '🔧 The bomb was defused!', boom: '💥 BOOM! The bomb exploded!',
+    tags: '⏱ Time is up – more tags wins', tie: '⏱ Time is up – a tie goes to Blue'
+  };
+  const eidEnt = function (id) { if (NET) return NET.byEid[id] || null; for (let i = 0; i < ents.length; i++) if (ents[i].eid === id) return ents[i]; return null; };
+
+  function buildRB() {
+    const sp = world.rbSpots, R = ES.RB;
+    const V = RBV = { g: new T.Group(), tickT: 0, boomT: 0, flash: 0, hx: sp.h.x, hz: sp.h.z, walkT: 0, blink: 0, spots: sp };
+    scene.add(V.g);
+    const mat = function (c, o) { return new T.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, side: T.DoubleSide, fog: false }); };
+    const zone = function (p, color, r) {
+      const gy = world.groundAt(p.x, p.z, 3) + 0.06;
+      const ring = new T.Mesh(new T.RingGeometry(r - 0.3, r, 40), mat(color, 0.9)); ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, gy, p.z);
+      const disc = new T.Mesh(new T.CircleGeometry(r, 32), mat(color, 0.16)); disc.rotation.x = -Math.PI / 2; disc.position.set(p.x, gy - 0.01, p.z);
+      const beam = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, 9, 8, 1, true), mat(color, 0.26)); beam.position.set(p.x, gy + 4.5, p.z);
+      V.g.add(ring, disc, beam);
+      return { ring: ring, disc: disc, beam: beam, y: gy };
+    };
+    V.safe = zone(sp.s, 0x58a6ff, R.SAFE_R);
+    V.site = zone(sp.z, 0xff9a3c, 2.6);
+    const label = function (txt, css, x, y, z) { const l = makeNameSprite(txt, css, true); l.scale.set(2.1, 0.52, 1); l.position.set(x, y, z); V.g.add(l); return l; };
+    label('🔵 SAFE ZONE', '#2f86ff', sp.s.x, V.safe.y + 3.3, sp.s.z);
+    V.siteLabel = label('💣 BOMB SITE', '#d9731a', sp.z.x, V.site.y + 3.3, sp.z.z);
+    // the bomb (only shown while it ticks)
+    V.bomb = new T.Group(); V.bomb.position.set(sp.z.x, V.site.y, sp.z.z); V.bomb.visible = false;
+    const bb = new T.Mesh(new T.BoxGeometry(0.8, 0.3, 0.55), new T.MeshLambertMaterial({ color: 0x2a2f38 })); bb.position.y = 0.2; V.bomb.add(bb);
+    const bs = new T.Mesh(new T.BoxGeometry(0.8, 0.06, 0.12), new T.MeshBasicMaterial({ color: 0xffd23f })); bs.position.set(0, 0.37, 0.12); V.bomb.add(bs);
+    V.bombLed = new T.Mesh(new T.BoxGeometry(0.16, 0.1, 0.16), new T.MeshBasicMaterial({ color: 0xff2a1a })); V.bombLed.position.set(0.25, 0.4, -0.1); V.bomb.add(V.bombLed);
+    V.g.add(V.bomb);
+    // the hostage: a small tied-up civilian in an orange suit, blindfolded
+    const hg = mergeBoxes([
+      { x: 0, y: 0.45, z: 0, w: 0.4, h: 0.9, d: 0.26, c: 0x39425a },
+      { x: 0, y: 1.15, z: 0, w: 0.56, h: 0.62, d: 0.32, c: 0xff8a1f },
+      { x: 0, y: 1.62, z: 0, w: 0.34, h: 0.34, d: 0.34, c: 0xf1c9a5 },
+      { x: 0, y: 1.66, z: -0.01, w: 0.37, h: 0.1, d: 0.37, c: 0xffffff },
+      { x: 0, y: 1.1, z: 0.2, w: 0.4, h: 0.16, d: 0.12, c: 0xd8d8d8 },
+      { x: -0.36, y: 1.1, z: 0.04, w: 0.13, h: 0.5, d: 0.13, c: 0xff8a1f },
+      { x: 0.36, y: 1.1, z: 0.04, w: 0.13, h: 0.5, d: 0.13, c: 0xff8a1f }
+    ]);
+    V.hostage = new T.Group();
+    V.hostage.add(new T.Mesh(hg, new T.MeshLambertMaterial({ vertexColors: true })));
+    const hgy = world.groundAt(sp.h.x, sp.h.z, 3);
+    V.hostage.position.set(sp.h.x, hgy, sp.h.z);
+    V.hLabel = label('🆘 HOSTAGE', '#d9a000', sp.h.x, hgy + 2.5, sp.h.z);
+    V.g.add(V.hostage);
+    // the explosion ball
+    V.ball = new T.Mesh(new T.SphereGeometry(1, 14, 10), new T.MeshBasicMaterial({ color: 0xff9a2a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+    V.ball.visible = false; V.g.add(V.ball);
+    G.rbv = V;
+  }
+
+  /* every frame: move the hostage, show / hide the bomb, tick sounds, explosion animation */
+  function updateRB(dt) {
+    const V = RBV, st = RB.eng.st, sp = V.spots;
+    // hostage glides to where the rules say they are (they follow whoever freed them)
+    const k = 1 - Math.exp(-dt * 12), dx = st.h.x - V.hx, dz = st.h.z - V.hz, dist = Math.hypot(dx, dz);
+    if (dist > 7) { V.hx = st.h.x; V.hz = st.h.z; } else { V.hx += dx * k; V.hz += dz * k; }
+    const moving = dist > 0.25 && st.h.s === 1;
+    V.walkT += dt * (moving ? 9 : 2);
+    const hy = world.groundAt(V.hx, V.hz, 4);
+    V.hostage.position.set(V.hx, hy + (moving ? Math.abs(Math.sin(V.walkT)) * 0.07 : 0), V.hz);
+    if (dist > 0.12) V.hostage.rotation.y = Math.atan2(dx, dz) + Math.PI;
+    V.hostage.rotation.z = moving ? 0 : Math.sin(V.walkT) * 0.03;
+    V.hLabel.position.set(V.hx, hy + 2.5, V.hz);
+    V.hLabel.visible = st.h.s !== 3;
+    // the bomb
+    const planted = st.b.s === 1;
+    V.bomb.visible = planted || (st.b.s === 2);
+    V.bombLed.material.color.setHex(st.b.s === 2 ? 0x30e060 : (V.blink > 0 ? 0xff2a1a : 0x601010));
+    if (V.blink > 0) V.blink -= dt;
+    V.site.ring.material.color.setHex(planted ? 0xff3a2a : (st.b.s === 2 ? 0x30e060 : 0xff9a3c));
+    V.site.beam.material.color.setHex(planted ? 0xff3a2a : (st.b.s === 2 ? 0x30e060 : 0xff9a3c));
+    V.site.beam.material.opacity = planted ? 0.35 + Math.abs(Math.sin(performance.now() / 120)) * 0.3 : 0.26;
+    V.siteLabel.visible = st.b.s !== 3;
+    // ticking sound: slow, then faster in the last 5 seconds (heard everywhere, louder when you are close)
+    if (planted && st.ph === 0) {
+      V.tickT -= dt;
+      if (V.tickT <= 0) {
+        const t = st.b.t;
+        V.tickT = t > 5 ? 1.0 : (t > 2.5 ? 0.5 : 0.25);
+        const d = Math.hypot(player.x - sp.z.x, player.z - sp.z.z), vol = clamp(1.1 - d / 70, 0.35, 1);
+        ES.audio.sfx(t > 5 ? 'bomb_tick' : 'bomb_fast', vol); V.blink = 0.12;
+      }
+    }
+    // the explosion
+    if (V.boomT > 0) {
+      V.boomT -= dt;
+      const u = 1 - Math.max(0, V.boomT) / 1.1;
+      V.ball.visible = V.boomT > 0; V.ball.scale.setScalar(1 + u * 13); V.ball.material.opacity = (1 - u) * 0.7;
+      V.ball.position.set(sp.z.x, V.site.y + 1.2, sp.z.z);
+    }
+    if (V.flash > 0) { V.flash = Math.max(0, V.flash - dt * 1.2); $('boom-flash').style.opacity = V.flash; }
+  }
+
+  /* what the player could do right now with the E key (or null) */
+  function rbContext() {
+    if (!RB || !player.alive || S.phase !== 'play') return null;
+    const st = RB.eng.st, sp = world.rbSpots, r = ES.RB.ACT_R - 0.9, t = myTeam();
+    if (st.ph !== 0) return null;
+    if (t === 0) {
+      if (st.b.s === 1 && Math.hypot(player.x - sp.z.x, player.z - sp.z.z) <= r) return 'defuse';
+      if (st.h.s === 0 && Math.hypot(player.x - st.h.x, player.z - st.h.z) <= r) return 'rescue';
+    } else if (st.b.s === 0 && st.h.s !== 3 && Math.hypot(player.x - sp.z.x, player.z - sp.z.z) <= r) return 'plant';
+    return null;
+  }
+  function openMission() {
+    if (S.phase !== 'play' || S.paused || S.qOpen || !player.alive) return;
+    const k = rbContext();
+    if (!k) {
+      toast(myTeam() === 0 ? '🆘 Go next to the hostage (or the ticking 💣) and press E' : '💣 Go to the bomb site and press E to plant', 2);
+      return;
+    }
+    openQuestion(k);
+  }
+  /* a right answer on a mission question: do it (solo: here, class: ask the referee) */
+  function rbDo(kind) {
+    if (!RB) return;
+    if (NET) { netSend({ t: 'rb', a: kind }); return; }
+    if (!RB.eng.act(player, kind)) toast('Too late! 😬', 1.4);
+  }
+  G.rbAct = function (b, kind) { return RB ? RB.eng.act(b, kind) : false; };       // bots do their mission through here
+
+  /* sounds, banners and effects for a Rescue & Bomb event (solo: called by the rules engine; class: sent by the referee) */
+  function rbHook(name, a, b) {
+    rbEffects(name, a, b);
+    if (name === 'round') rbResetRound();
+  }
+  function showRound(title, sub, cls, secs) {
+    $('rd-title').textContent = title; $('rd-sub').textContent = sub;
+    $('ov-round').className = 'overlay clear ' + (cls || '');
+    S.bannerT = secs || 3;
+  }
+  function rbEffects(name, a, b) {
+    if (!RB || !S) return;
+    const st = RB.eng.st, sp = world.rbSpots, who = eidEnt(a), nm = who ? who.name : 'Someone';
+    if (name === 'rescue') {
+      toast('🆘 ' + nm + ' freed the hostage! Bring them to the blue zone!', 3); ES.audio.sfx('rb_rescue');
+    } else if (name === 'drop') {
+      toast('🆘 The hostage was dropped!', 2.5);
+    } else if (name === 'pickup') {
+      toast('🆘 ' + nm + ' has the hostage again!', 2.5);
+    } else if (name === 'plant') {
+      toast('💣 ' + nm + ' planted the bomb! 15 seconds!', 3); ES.audio.sfx('rb_plant'); ES.audio.announce('planted');
+      if (RBV) { RBV.tickT = 0.4; RBV.blink = 0.2; }
+    } else if (name === 'defuse') {
+      ES.audio.sfx('rb_rescue'); ES.audio.announce('defused');
+    } else if (name === 'boom') {
+      if (RBV) {
+        RBV.boomT = 1.1; RBV.flash = 0.9; const y = RBV.site.y + 1;
+        burst(sp.z.x, y, sp.z.z, 0xff8a3c, 26); burst(sp.z.x, y + 1, sp.z.z, 0xffd23f, 22); burst(sp.z.x + 1, y, sp.z.z - 1, 0xffffff, 12);
+      }
+      ES.audio.sfx('bomb_boom', 1);
+    } else if (name === 'win') {
+      if (S.qOpen) cancelQuestion(true);
+      fireHeld = false;
+      const mine = a === myTeam();
+      const total = st.wins[0] + ' – ' + st.wins[1];
+      let title = mine ? '✅ ROUND WON!' : '❌ ROUND LOST';
+      if (st.final) title = (a === 0 ? '🔵 BLUE' : '🔴 RED') + ' WINS THE MATCH!';
+      showRound(title, (RB_WHY[b] || '') + '   ·   Blue ' + total + ' Red', a === 0 ? 'blue' : 'red', ES.RB.BETWEEN_SECS - 0.4);
+      if (b === 'saved') { ES.audio.sfx('rb_rescue'); ES.audio.announce('saved'); }
+      else if (b !== 'boom' && b !== 'defuse') ES.audio.sfx(mine ? 'correct' : 'wrong');
+    } else if (name === 'round') {
+      if (a > 1) { fireHeld = false; }
+      showRound('ROUND ' + a, myTeam() === 0 ? '🔵 Free the hostage or defuse the bomb!' : '🔴 Plant the bomb and stop the rescue!', myTeam() === 0 ? 'blue' : 'red', 2.4);
+      if (a > 1) { ES.audio.sfx('go'); ES.audio.announce('go'); }
+      if (RBV) { RBV.tickT = 0; RBV.boomT = 0; RBV.ball.visible = false; RBV.flash = 0; $('boom-flash').style.opacity = 0; RBV.hx = sp.h.x; RBV.hz = sp.h.z; }
+    }
+  }
+  /* solo: a new round starts - everybody back to their base with full health */
+  function rbResetRound() {
+    const used = [[], []];
+    ents.forEach(function (e) {
+      placeAtSpawn(e, used);
+      e.alive = true; e.hp = P.hp; e.protT = 1.5; e.target = null; e.path = null; e.sees = false; e.state = 'roam'; e.ammo = e.D.mag; e.deathT = 0; e.alert = 0; e.objKind = ''; e.vx = e.vz = e.vy = 0;
+      if (e.mesh) { e.mesh.visible = true; e.mesh.scale.set(1, 1, 1); }
+    });
+    S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99; dropWeapon(true);
+    if (S.qOpen) cancelQuestion(true);
+    show('ov-death', false);
+  }
+
+  function updateRbHud() {
+    const st = RB.eng.st, t = myTeam(), me = player.eid;
+    setText('sc-target', 'Round ' + st.round + ' · first to ' + RB.eng.need);
+    if (st.b.s === 1) { setText('sc-time', '💣 ' + Math.max(0, Math.ceil(st.b.t))); }
+    let msg = '', cls = '';
+    if (st.ph !== 0) msg = '';
+    else if (st.b.s === 1) {
+      msg = t === 0 ? '💣 BOMB PLANTED! Run to the site and defuse it (E)!' : '💣 BOMB PLANTED! Guard it until it explodes!'; cls = 'bomb';
+    } else if (st.h.s === 1) {
+      msg = t === 0 ? (st.h.c === me ? '🆘 You have the hostage! Run to the 🔵 blue zone!' : '🆘 Protect the hostage and get them to the blue zone!') : '🆘 Tag the hostage carrier before they get home!';
+      cls = t === 0 ? 'blue' : '';
+    } else if (st.h.s === 2) {
+      msg = t === 0 ? '🆘 The hostage was dropped! Walk to them to pick them up!' : '🆘 The hostage was dropped – stop Blue from picking them up!';
+    } else {
+      msg = t === 0 ? '🆘 Free the hostage in the red base (E)  ·  or stop the bomb' : '💣 Plant the bomb at the site (E)  ·  guard the hostage';
+    }
+    show('rb-bar', !!msg);
+    if (msg) { const bar = $('rb-bar'); if (bar.textContent !== msg) bar.textContent = msg; bar.className = cls; }
+    const k = rbContext(), hint = $('rb-hint');
+    const show2 = !!k && !S.qOpen && !S.paused;
+    hint.classList.toggle('hidden', !show2);
+    if (show2) {
+      const txt = { rescue: '🆘 Free the hostage', plant: '💣 Plant the bomb', defuse: '🔧 Defuse the bomb' }[k];
+      if (hint.dataset.k !== k) { hint.dataset.k = k; hint.innerHTML = '<kbd>E</kbd>' + txt; }
+    }
+  }
+  function drawRbRadar(c, s) {
+    const st = RB.eng.st, sp = world.rbSpots, h = world.half;
+    c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.fillStyle = 'rgba(88,166,255,.35)';
+    c.beginPath(); c.arc((sp.s.x + h) * s, (sp.s.z + h) * s, ES.RB.SAFE_R * s, 0, 7); c.fill(); c.stroke();
+    const bx = (sp.z.x + h) * s, bz = (sp.z.z + h) * s;
+    c.fillStyle = st.b.s === 1 ? '#ff2a1a' : (st.b.s === 2 ? '#30e060' : '#ff9a3c');
+    c.beginPath(); c.moveTo(bx, bz - 6); c.lineTo(bx + 6, bz); c.lineTo(bx, bz + 6); c.lineTo(bx - 6, bz); c.closePath(); c.fill();
+    if (st.h.s !== 3) { c.fillStyle = '#ffd23f'; c.strokeStyle = '#7a5a00'; c.lineWidth = 1.5; c.beginPath(); c.arc((st.h.x + h) * s, (st.h.z + h) * s, 4.5, 0, 7); c.fill(); c.stroke(); }
+  }
+
   /* =====================================================================
      CLASS MATCH (online with the teacher's page as referee)
      The referee sends "snapshots": where everybody is, their health, the score and the clock.
@@ -1379,10 +1723,10 @@
     netInterp(dt);
     if (S.phase === 'play') {
       S.qCd = Math.max(0, S.qCd - dt);
-      S.timeLeft = Math.max(0, S.timeLeft - dt); announceClock();         // the referee corrects this a few times a second
-      if (S.qOpen && S.qState === 'asking' && st.qTime) {
+      S.timeLeft = Math.max(0, S.timeLeft - dt); if (!RB) announceClock();         // the referee corrects this a few times a second
+      if (S.qOpen && S.qState === 'asking' && S.qMax) {
         S.qTime -= dt;
-        $('qp-fill').style.width = Math.max(0, 100 * S.qTime / st.qTime) + '%';
+        $('qp-fill').style.width = Math.max(0, 100 * S.qTime / S.qMax) + '%';
         $('qp-fill').classList.toggle('urgent', S.qTime < 6);
         if (S.qTime <= 0) chooseAnswer(-1);
       }
@@ -1423,7 +1767,7 @@
       if (n !== NET.cdLast) { NET.cdLast = n; if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); } }
     } else if (ph === 'play' && S.phase !== 'play') {
       S.phase = 'play'; show('ov-count', false);
-      toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
+      if (RB) rbEffects('round', 1); else toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
     }
   }
 
@@ -1432,6 +1776,7 @@
     S.score = [m.sc[0], m.sc[1]];
     S.timeLeft = m.tl;
     if (typeof m.cr === 'number') S.crMask = m.cr;
+    if (RB && m.rb) RB.eng.apply(m.rb);                     // Rescue & Bomb: copy the referee's round state first, then react to the events
     netPhase(m.ph, m.cd);
     for (let i = 0; i < m.ev.length; i++) netEvent(m.ev[i]);
     for (let i = 0; i < m.e.length; i++) {
@@ -1448,6 +1793,7 @@
         if (e.alive && !alive) { e.alive = false; e.deathT = 0.5; }
         else if (!e.alive && alive) { e.alive = true; e.deathT = 0; e.x = e.tx; e.y = e.ty; e.z = e.tz; e.yaw = e.tyaw; if (e.mesh) { e.mesh.visible = true; e.mesh.scale.set(1, 1, 1); } }
         e.hp = r[5]; e.state = (r[6] & 2) ? 'answer' : 'roam'; e.protT = (r[6] & 4) ? 1 : 0; e.speed = r[7];
+        const wk = (r[6] >> 3) & 7; if (wk && ES.WEAPON_IDS[wk - 1]) { e.wShow = ES.WEAPON_IDS[wk - 1]; e.wShowT = 1; } else e.wShowT = 0;       // which bonus weapon they hold
       }
     }
   };
@@ -1470,6 +1816,8 @@
       if (v !== player) G.soundAt('scream', v.x, v.z, 0.9);
       if (v === player) $('death-text').textContent = a ? 'Tagged by ' + a.name + '!' : 'You were tagged!';
       if (a === player) { S.stats.kills++; ES.audio.sfx('kill'); }
+    } else if (k === 'rb') {
+      rbEffects(ev[1], ev[2], ev[3]);
     } else if (k === 'hurt') {
       if (ev[1] !== NET.you) return;
       const a = NET.byEid[ev[2]];
@@ -1495,6 +1843,8 @@
     const p = player;
     p.x = m.x; p.z = m.z; p.y = 0; p.vx = p.vz = p.vy = 0; yaw = m.yaw; pitch = 0;
     p.alive = true; p.hp = P.hp; p.protT = P.protect;
+    if (S.weapon !== 'pistol') dropWeapon(true);              // a new round starts with the normal blaster
+    if (S.qOpen && RB) cancelQuestion(true);
     S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99;
     show('ov-death', false);
     ES.audio.sfx('respawn');
@@ -1540,7 +1890,7 @@
     getLook: function () { return { yaw: yaw, pitch: pitch }; },
     setFire: function (v) { fireHeld = v; },
     choose: chooseAnswer, closeQ: closeQuestion,
-    end: endMatch, get net() { return NET; },
+    end: endMatch, get net() { return NET; }, get rb() { return RB; }, get rbv() { return RBV; }, rbDo: rbDo, openMission: openMission,
     give: giveWeapon, shoot: playerShoot,
     step: function (n, dt) { for (let i = 0; i < n; i++) tick(dt); }   // run the game without drawing (used for fast automatic tests)
   };

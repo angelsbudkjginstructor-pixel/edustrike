@@ -76,10 +76,70 @@
     if (res.target) G.damage(res.target, D.dmg, b, false);
   }
 
+  /* ---------- Rescue & Bomb: what does this bot do for the mission? ---------- */
+  function rbOn(G) { return !!(G.rb && G.rb.st.on && G.rb.st.ph === 0 && G.world.rbSpots); }
+  /* the job for this bot's team right now: {x, z, kind} or null */
+  function rbGoal(G, b) {
+    const st = G.rb.st, sp = G.world.rbSpots;
+    if (b.team === 0) {
+      if (st.h.s === 1 && st.h.c === b.eid) return { x: sp.s.x, z: sp.s.z, kind: 'carry' };         // I have the hostage: run home
+      if (st.b.s === 1) return { x: sp.z.x, z: sp.z.z, kind: 'defuse' };
+      if (st.h.s === 0) return { x: st.h.x, z: st.h.z, kind: 'rescue' };
+      if (st.h.s === 2) return { x: st.h.x, z: st.h.z, kind: 'pickup' };
+      return null;
+    }
+    if (st.b.s === 0 && st.h.s !== 3) return { x: sp.z.x, z: sp.z.z, kind: 'plant' };
+    return null;
+  }
+  /* only the closest bots of a team go for the objective (the others fight and guard) */
+  function isActor(G, b, goal, n) {
+    const d0 = Math.hypot(goal.x - b.x, goal.z - b.z);
+    let closer = 0;
+    for (let k = 0; k < G.ents.length; k++) {
+      const e = G.ents[k];
+      if (e === b || e.team !== b.team || !e.alive || !e.isBot) continue;
+      if (Math.hypot(goal.x - e.x, goal.z - e.z) < d0) closer++;
+    }
+    return closer < n;
+  }
+  /* where a bot that is NOT doing the mission goes (guard / hunt / rush the bomb). Returns {x,z} or null */
+  function rbWander(G, b) {
+    const st = G.rb.st, sp = G.world.rbSpots, o = function () { return (rnd() - 0.5) * 8; };
+    if (st.b.s === 1) return { x: sp.z.x + o(), z: sp.z.z + o() };                       // everybody runs to the ticking bomb
+    if (st.h.s === 1 || st.h.s === 2) return { x: st.h.x + o() * 0.6, z: st.h.z + o() * 0.6 };   // hunt or escort whoever has the hostage
+    if (b.team === 1 && st.h.s === 0 && rnd() < 0.6) return { x: st.h.x + o(), z: st.h.z + o() };   // red guards the hostage
+    return null;
+  }
+  /* walk to the objective and answer a question there. Returns true when the bot is busy with it. */
+  function objective(G, b, dt) {
+    const goal = rbGoal(G, b);
+    if (!goal) return false;
+    b.roleT = (b.roleT || 0) - dt;
+    if (b.roleT <= 0) { b.roleT = 0.4 + rnd() * 0.3; b.isAct = goal.kind === 'carry' || isActor(G, b, goal, goal.kind === 'plant' ? 1 : 2); }
+    if (!b.isAct) return false;
+    const d = Math.hypot(goal.x - b.x, goal.z - b.z);
+    if ((goal.kind === 'rescue' || goal.kind === 'plant' || goal.kind === 'defuse') && d <= 3.3) {      // close enough: start answering ("?" bubble)
+      b.state = 'obj'; b.objKind = goal.kind; b.ansT = b.D.ansTime * (0.8 + rnd() * 0.3); b.path = null; return true;
+    }
+    if (b.repathT <= 0) {
+      b.path = G.world.findPath(b.x, b.z, goal.x, goal.z); b.pi = 0;
+      b.repathT = (goal.kind === 'pickup' || goal.kind === 'carry') ? 0.7 : 1.5;
+    }
+    if (!b.path) return false;
+    follow(G, b, dt, b.D.speed * (goal.kind === 'carry' ? 1.05 : 1));
+    b.stuckT += dt;                                                    // stuck check, same as when wandering
+    if (b.stuckT > 1.2) {
+      if (Math.hypot(b.x - b.sx, b.z - b.sz) < 0.5) { b.path = null; b.repathT = 0; }
+      b.sx = b.x; b.sz = b.z; b.stuckT = 0;
+    }
+    return true;
+  }
+
   function pickDestination(G, b) {
     let d;
     const r = rnd();
-    if (r < 0.3) {                                   // head toward a random enemy ("heard footsteps")
+    if (rbOn(G) && rnd() < 0.75) d = rbWander(G, b);
+    if (!d && r < 0.3) {                             // head toward a random enemy ("heard footsteps")
       const foes = G.ents.filter(function (e) { return e.alive && e.team !== b.team; });
       if (foes.length) { const f = foes[Math.floor(rnd() * foes.length)]; d = { x: f.x, z: f.z }; }
     }
@@ -112,6 +172,18 @@
     b.fireT -= dt; b.alert = Math.max(0, b.alert - dt); b.repathT -= dt;
     b.speed = 0;
 
+    /* ---- Rescue & Bomb: busy answering a mission question (rescue / plant / defuse) ---- */
+    if (b.state === 'obj') {
+      b.ansT -= dt;
+      const goal = rbOn(G) ? rbGoal(G, b) : null;
+      if (!goal || goal.kind !== b.objKind || b.alert > 2.2) { b.state = 'roam'; b.objKind = ''; b.roleT = 0; return; }   // the job changed, or somebody is shooting at us: stop
+      if (b.ansT <= 0) {
+        if (rnd() < D.ansAcc) { G.rbAct(b, b.objKind); b.state = 'roam'; b.objKind = ''; }   // got it right!
+        else b.ansT = D.ansTime * 0.7;                                                      // wrong - try another question
+      }
+      return;
+    }
+
     /* ---- out of ammo: stop and answer a question ---- */
     if (b.state !== 'answer' && (b.ammo <= 0 || (b.ammo < 4 && !b.sees))) {
       b.state = 'answer'; b.ansT = D.ansTime * (0.8 + rnd() * 0.4); b.path = null;
@@ -131,7 +203,13 @@
 
     if (b.target && !b.target.alive) { b.target = null; b.path = null; b.sees = false; }
 
-    if (b.target && b.sees) {
+    /* Rescue & Bomb: a bot that has the hostage runs home, and a bot on its way to the objective does not stop for enemies that are far away */
+    let keepGoing = false;
+    if (b.target && b.sees && rbOn(G)) {
+      const g = rbGoal(G, b);
+      if (g && (g.kind === 'carry' || (b.isAct && Math.hypot(b.target.x - b.x, b.target.z - b.z) > 10))) keepGoing = true;
+    }
+    if (b.target && b.sees && !keepGoing) {
       /* ---- fight ---- */
       const t = b.target;
       const dx = t.x - b.x, dz = t.z - b.z, dist = Math.sqrt(dx * dx + dz * dz) || 0.01;
@@ -148,6 +226,8 @@
       if (b.reactT <= 0 && err < 0.15 && b.ammo > 0 && b.fireT <= 0 && t.protT <= 0) fireAt(G, b, t, dist);
       return;
     }
+
+    if (rbOn(G) && objective(G, b, dt)) return;
 
     if (b.target && b.lastSeen) {
       /* ---- lost sight: go to where we last saw them ---- */

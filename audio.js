@@ -196,6 +196,12 @@
       tone('sine', 110, 28, 0.6, 0.45 * v, 0, p);
       tone('sawtooth', 200, 40, 0.4, 0.14 * v, 0, p, { cut: 700 });
     },
+    // Rescue & Bomb: the ticking bomb (slow, then fast in the last seconds), the big explosion, a rescue chime
+    bomb_tick: function (v, p) { tone('square', 1500, 1500, 0.06, 0.12 * v, 0, p); },
+    bomb_fast: function (v, p) { tone('square', 2000, 2000, 0.05, 0.15 * v, 0, p); },
+    bomb_boom: function (v, p) { noise(1.1, 0.6 * v, 600, 0, p); tone('sine', 90, 24, 1.0, 0.6 * v, 0, p); tone('sawtooth', 180, 30, 0.7, 0.2 * v, 0, p, { cut: 600 }); },
+    rb_plant: function () { tone('square', 900, 900, 0.1, 0.12); tone('square', 900, 900, 0.1, 0.12, 0.18); tone('square', 1200, 1200, 0.2, 0.12, 0.36); },
+    rb_rescue: function () { [523, 659, 784, 1046].forEach(function (f, i) { tone('triangle', f, f, 0.18, 0.15, i * 0.1); }); },
     // picking up a weapon: a bright "power-up" sweep
     pickup: function () {
       tone('triangle', 400, 1600, 0.2, 0.17);
@@ -401,7 +407,7 @@
   function level() { return (musicOn ? musicVol : 0) * 0.55 * (M.muffled ? 0.55 : 1); }
 
   /* what the announcer says */
-  const ANN = { go: 'Fight!', first: 'First blood!', k2: 'Double kill!', k3: 'Triple kill!', k4: 'Rampage!', min1: 'One minute left!', last: 'Ten seconds!', win: 'Victory! Your team wins!', lose: 'Defeat. Better luck next time!', draw: 'It is a draw!', streak: 'Unstoppable!' };
+  const ANN = { go: 'Fight!', first: 'First blood!', k2: 'Double kill!', k3: 'Triple kill!', k4: 'Rampage!', min1: 'One minute left!', last: 'Ten seconds!', win: 'Victory! Your team wins!', lose: 'Defeat. Better luck next time!', draw: 'It is a draw!', streak: 'Unstoppable!', saved: 'We are saved!', planted: 'The bomb has been planted!', defused: 'The bomb has been defused!', rbwin: 'Round won!' };
   let announceOn = true, annLast = 0;
 
   const music = {
@@ -451,7 +457,7 @@
         const txt = text || ANN[key];
         if (!announceOn || !sfxOn || !txt || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
         const now = performance.now();
-        if (now - annLast < 1300 && key !== 'win' && key !== 'lose') return;      // never talk over yourself
+        if (now - annLast < 1300 && key !== 'win' && key !== 'lose' && key !== 'saved') return;      // never talk over yourself
         annLast = now;
         const u = new SpeechSynthesisUtterance(txt);
         u.pitch = 0.55; u.rate = 0.92; u.volume = Math.min(1, 0.55 + sfxVol * 0.5);

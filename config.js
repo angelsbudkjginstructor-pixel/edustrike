@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 5B - 4 graphics levels';
+  ES.VERSION = 'Stage 5C - new weapon looks, Rescue & Bomb';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -24,7 +24,11 @@
     w_scatter: { files: ['sfx-scatter.mp3'], gain: 1.4, rate: 0.05 },
     w_sniper:  { files: ['sfx-sniper.mp3'],  gain: 0.9, rate: 0.03 },
     w_rocket:  { files: ['sfx-rocket.mp3'],  gain: 0.9, rate: 0.03 },
-    pickup:    { files: ['sfx-pickup.mp3'],  gain: 0.8 }
+    pickup:    { files: ['sfx-pickup.mp3'],  gain: 0.8 },
+    // Rescue & Bomb mode (your own bomb sounds)
+    bomb_tick: { files: ['sfx-bombtick.mp3'], gain: 0.9 },
+    bomb_fast: { files: ['sfx-bombfast.mp3'], gain: 0.9 },
+    bomb_boom: { files: ['sfx-bomb.mp3'],     gain: 1.2 }
   };
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
   ES.MUSIC_FILES = {
@@ -156,7 +160,8 @@
     gfx: 'low', showFps: true, aimAssist: true, radar: true,
     sens: 1, fov: 75, sound: true, lookMode: 'lock', // 'lock' = pointer lock, 'keys' = arrow keys + right-drag
     music: true, musicVol: 0.6, sfxVol: 0.8, scream: true, trackMusic: true, announcer: true,
-    map: 'park'
+    map: 'park',
+    mode: 'normal', rbRounds: 3, rbMinutes: 3        // game mode: 'normal' or 'rb' (Rescue & Bomb)
   };
 
   const KEY = 'edustrike.settings.v1';

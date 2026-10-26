@@ -116,3 +116,16 @@ Students choose their own level in Settings > Graphics & Controls (the default i
 Nothing extra is downloaded: the surface detail, ground painting and soldiers are all made by code (no image or model files), so the site stays about the same size.
 If a computer is too slow, the game steps down ONE level at a time (Ultra > High > Medium > Low) with a small message, and remembers that level for next time.
 An old saved "Fancy" setting is treated as Ultra.
+
+## Stage 5C - new weapon looks, Rescue & Bomb mode
+
+**Weapon looks.** Rapid, Scatter, Sniper and Rocket each have their own shape and colour, in your hands and in other soldiers' hands (class matches too).
+
+**Rescue & Bomb mode** (solo menu "Game mode", or the teacher's "Game mode" before START). Normal mode is unchanged.
+- **Blue** frees the hostage (stand next to them, press **E**, answer a question), the hostage follows the rescuer, and bringing them to the blue safe zone wins the round at once. The announcer says "We are saved!". Blue can also win a round by defusing the bomb (E + a question).
+- **Red** plants the bomb at the site (E + a question). If nobody defuses it in 15 seconds - BOOM, Red wins the round.
+- If the round clock runs out (default 3 minutes) and no bomb is ticking, the team with more tags in that round wins (a tie goes to Blue). Tags still show on the scoreboard.
+- Best of N rounds (default 3, the teacher can pick 1, 3, 5, 7 or 9): the first team to win the majority of rounds wins the match. After every round everybody goes back to base with full health.
+- Players who are tagged come back after a few seconds. If the hostage carrier is tagged, the hostage waits for another Blue player.
+- Bots play the missions too (a few go for the objective, the rest fight, guard or hunt the carrier).
+- Sounds: your `sfx-bombtick.mp3`, `sfx-bombfast.mp3` (last 5 seconds) and `sfx-bomb.mp3` (explosion) - set in `ES.SOUND_FILES` in `js/config.js`. The rules are in `js/rb.js`.

@@ -44,13 +44,13 @@
   function loadSettings() {
     try {
       const j = JSON.parse(localStorage.getItem(SETKEY) || '{}');
-      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
+      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
       if (Array.isArray(j.off)) { off = {}; j.off.forEach(function (k) { off[String(k)] = true; }); }
     } catch (e) { /* ignore */ }
   }
   function saveSettings() {
     try {
-      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { j[id] = $(id).value; });
+      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin'].forEach(function (id) { j[id] = $(id).value; });
       j.off = Object.keys(off);
       localStorage.setItem(SETKEY, JSON.stringify(j));
     } catch (e) { /* ignore */ }
@@ -113,7 +113,8 @@
     const names = { wait: 'waiting for students to click START…', count: 'starting…', play: 'LIVE', ended: 'finished' };
     $('l-state').textContent = names[i.phase] || '';
     $('l-time').textContent = '⏱ ' + mmss(i.timeLeft);
-    $('l-score').textContent = '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (first to ' + i.target + ')';
+    $('l-score').textContent = i.rb ? '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (round ' + i.rb.round + ' · first to ' + i.rb.need + ' rounds' + (i.rb.bomb === 1 && i.rb.rph === 0 ? ' · 💣 ' + Math.ceil(i.rb.bombT) + 's' : '') + ')'
+                                : '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (first to ' + i.target + ')';
     $('l-ready').textContent = i.phase === 'wait' ? i.ready + ' / ' + i.humans + ' ready' : i.humans + ' students playing';
     [0, 1].forEach(function (team) {
       const box = $('l-team' + team); box.innerHTML = '';
@@ -138,7 +139,8 @@
   $('r-start').addEventListener('click', function () {
     saveSettings();
     $('r-start-err').textContent = '';
-    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value, topics: chosenTopics() });
+    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value, topics: chosenTopics(),
+                               mode: $('m-mode').value === 'rb' ? 'rb' : 'normal', rounds: +$('m-rounds').value, rtime: +$('m-rmin').value });
     if (!r.ok) { $('r-start-err').textContent = r.error; return; }
     showMatchUi(true); renderLive(ES.match.info());
   });
@@ -146,7 +148,14 @@
   $('r-back').addEventListener('click', function () { ES.match.toLobby(); showMatchUi(false); });
   // fill the map list (from world.js), then restore the teacher's last choices
   $('m-map').innerHTML = ES.MAPS_LIST.map(function (m) { return '<option value="' + m.id + '">' + m.name + ' - ' + m.desc + '</option>'; }).join('');
-  loadSettings(); renderQuestions();
+  /* Rescue & Bomb: show its options (rounds, time per round) and hide "win by tagging / time limit" */
+  function modeUi() {
+    const rb = $('m-mode').value === 'rb';
+    Array.prototype.forEach.call(document.querySelectorAll('.rb-only'), function (el) { el.classList.toggle('hidden', !rb); });
+    Array.prototype.forEach.call(document.querySelectorAll('.nm-only'), function (el) { el.classList.toggle('hidden', rb); });
+  }
+  $('m-mode').addEventListener('change', function () { modeUi(); saveSettings(); });
+  loadSettings(); modeUi(); renderQuestions();
 
   function setOpenUi(on) { $('r-closed').classList.toggle('hidden', on); $('r-opened').classList.toggle('hidden', !on); }
 

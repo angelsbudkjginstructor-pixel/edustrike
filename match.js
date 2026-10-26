@@ -83,7 +83,7 @@
     addTracer: function (ax, ay, az, bx, by, bz, team) { M.ev.push(['shot', r2(ax), r2(ay), r2(az), r2(bx), r2(by), r2(bz), team, -1]); },
     soundAt: function () { /* students make the sound themselves when they see the 'shot' event */ },
     damage: function (target, amt, attacker, head) {
-      if (!target.alive || target.protT > 0 || M.phase !== 'play') return false;
+      if (!target.alive || target.protT > 0 || M.phase !== 'play' || (M.rb && M.rb.st.ph !== 0)) return false;       // no tagging while the round banner shows
       if (target.human && target.answering) amt *= 0.5;
       target.hp -= amt; target.sinceHurt = 0;
       if (target.human) M.ev.push(['hurt', target.eid, attacker ? attacker.eid : -1]);
@@ -105,9 +105,9 @@
   function kill(target, attacker, head) {
     target.alive = false; target.hp = 0; target.deaths++; target.respawnT = P.respawn;
     target.target = null; target.path = null; target.state = 'roam'; target.answering = false; target.wpn = null;   // a bonus weapon is lost when tagged
-    if (attacker) { attacker.kills++; M.score[attacker.team]++; }
+    if (attacker) { attacker.kills++; if (M.rb) M.rb.killed(attacker.team); else M.score[attacker.team]++; }      // Rescue & Bomb: score = rounds won, tags only break ties
     M.ev.push(['kill', attacker ? attacker.eid : -1, target.eid, head ? 1 : 0]);
-    if (M.score[0] >= M.target || M.score[1] >= M.target) finish('score');
+    if (!M.rb && (M.score[0] >= M.target || M.score[1] >= M.target)) finish('score');
   }
 
   /* push fighters apart a little so they do not stand inside each other */
@@ -214,6 +214,31 @@
     }
   }
 
+  /* Rescue & Bomb: a student answered a mission question right and asks to rescue / plant / defuse. The rules engine checks everything. */
+  function onRb(p, m) {
+    const e = p.ent; if (!M || !M.rb || M.phase !== 'play' || !e || !e.alive) return;
+    if (['rescue', 'plant', 'defuse'].indexOf(m.a) < 0) return;
+    const now = performance.now(); if (now - (e.lastRb || 0) < 800) return;          // not more than about one try a second
+    e.lastRb = now;
+    M.rb.act(e, m.a);
+  }
+  /* the referee's rules engine tells us what happened: pass it on to every student (sounds, banners) */
+  function rbHook(name, a, b) {
+    if (!M) return;
+    M.ev.push(['rb', name, a === undefined ? 0 : a, b === undefined ? 0 : b]);
+    if (name === 'round') resetRound();
+  }
+  /* a new round: everybody back to their base with full health and the normal blaster */
+  function resetRound() {
+    const used = [[], []];
+    M.ents.forEach(function (e) {
+      placeAtSpawn(e, used);
+      e.alive = true; e.hp = P.hp; e.protT = 1.5; e.target = null; e.path = null; e.sees = false; e.state = 'roam'; e.ammo = e.D.mag; e.deathT = 0;
+      e.sinceHurt = 99; e.alert = 0; e.wpn = null; e.respawnT = 0; e.answering = false; e.objKind = '';
+      if (e.human && e.p) ES.room.send(e.p, { t: 'respawn', eid: e.eid, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+    });
+  }
+
   /* a student closed the page or quit the match: a bot takes their place */
   function humanLeft(p) {
     const e = p && p.ent; if (!M || !e) return;
@@ -228,7 +253,8 @@
     stop();
     const humansP = ES.room.players().filter(function (p) { return p.conn; });
     if (!humansP.length) return { ok: false, error: 'No students are in the room yet.' };
-    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team', topics: [] }, settings || {});
+    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team', topics: [], mode: 'normal', rounds: 3, rtime: 3 }, settings || {});
+    const rbc = ES.rbClean(s.rounds, s.rtime);
     // the subtopics the teacher ticked (an empty list = every question); keep only sane text, and not too many
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
@@ -236,6 +262,11 @@
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
+    G.rb = null;
+    if (s.mode === 'rb' && world.rbSpots) {                         // Rescue & Bomb: rounds, a hostage and a bomb
+      M.rb = ES.createRB({ rounds: rbc.rounds, minutes: rbc.minutes, spots: world.rbSpots, ents: function () { return M ? M.ents : []; }, hook: rbHook });
+      M.timeLeft = rbc.minutes * 60; M.minutes = rbc.minutes; G.rb = M.rb;
+    }
     let eid = 1;
     const used = [[], []];
     const cnt = [0, 0];
@@ -252,7 +283,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: s.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : 'normal', rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
@@ -275,7 +306,7 @@
   function stop() {
     if (ticker) { ticker.stop(); ticker = null; }
     if (M) { M.humans.forEach(function (e) { if (e.p) e.p.ent = null; }); }
-    M = null; world = null;
+    M = null; world = null; G.rb = null;
   }
 
   function finish(reason) {
@@ -286,13 +317,19 @@
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, { t: 'end', reason: reason, sc: M.score.slice(), rows: M.results }); });
   }
 
+  /* which bonus weapon a player is holding right now (1..4, 0 = none): everybody sees it in the soldier's hands */
+  function weaponBits(e) {
+    if (!e.human || !e.wpn || e.wAmmo <= 0 || !e.alive) return 0;
+    return ES.WEAPON_IDS.indexOf(e.wpn) + 1;
+  }
+
   function sendSnap() {
     if (!M) return;
     const rows = M.ents.map(function (e) {
       return [e.eid, r2(e.x), r2(e.y), r2(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)),
-              (e.alive ? 1 : 0) | ((e.isBot ? e.state === 'answer' : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0), Math.round(e.speed * 10) / 10];
+              (e.alive ? 1 : 0) | ((e.isBot ? (e.state === 'answer' || e.state === 'obj') : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0) | (weaponBits(e) << 3), Math.round(e.speed * 10) / 10];
     });
-    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask };
+    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask, rb: M.rb ? M.rb.pack() : 0 };
     M.ev = [];
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, msg); });
   }
@@ -315,7 +352,11 @@
         M.countT -= dt;
         if (M.countT <= 0) { M.phase = 'play'; M.countT = 0; }
       } else if (M.phase === 'play') {
-        M.timeLeft -= dt;
+        if (M.rb) {                                       // Rescue & Bomb: the rules engine keeps the round clock + bomb
+          M.rb.update(dt);
+          const rs = M.rb.st; M.timeLeft = rs.tLeft; M.score[0] = rs.wins[0]; M.score[1] = rs.wins[1];
+          if (rs.ph === 2) finish('rounds');
+        } else M.timeLeft -= dt;
         for (let i = 0; i < M.ents.length; i++) {
           const e = M.ents[i];
           if (e.human) {
@@ -330,7 +371,7 @@
         }
         separate();
         updateCrates(dt);
-        if (M.timeLeft <= 0) { M.timeLeft = 0; finish('time'); }
+        if (!M.rb && M.timeLeft <= 0) { M.timeLeft = 0; finish('time'); }
         const alive = M.humans.filter(function (e) { return e.p; }).length;
         if (!alive && M.phase === 'play') finish('empty');
       }
@@ -351,7 +392,8 @@
       perf: Math.round((M.loopAvg || 0) * 10) / 10, perfMax: Math.round(M.loopMax || 0),
       phase: M.phase, timeLeft: M.timeLeft, score: M.score.slice(), target: M.target, reason: M.reason,
       ready: M.humans.filter(function (e) { return e.p && e.ready; }).length, humans: total,
-      rows: M.ents.map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; })
+      rows: M.ents.map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; }),
+      rb: M.rb ? { round: M.rb.st.round, need: M.rb.need, rounds: M.rb.st.rounds, rph: M.rb.st.ph, bomb: M.rb.st.b.s, bombT: M.rb.st.b.t, hostage: M.rb.st.h.s } : null
     };
   }
 
@@ -359,6 +401,7 @@
   ES.room.on('st', onState);
   ES.room.on('shot', onShot);
   ES.room.on('earn', onEarn);
+  ES.room.on('rb', onRb);
   ES.room.on('ready', function (p) { if (p.ent) p.ent.ready = true; });
   ES.room.on('quit', function (p) { humanLeft(p); });
   ES.room.on('leave', function (p) { humanLeft(p); });

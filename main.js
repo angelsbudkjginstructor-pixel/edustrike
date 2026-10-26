@@ -28,6 +28,10 @@
     const s = S();
     $('set-name').value = s.name;
     $('set-bots').value = s.botsPerTeam; $('set-kills').value = s.targetKills; $('set-minutes').value = s.minutes;
+    $('set-mode').value = s.mode === 'rb' ? 'rb' : 'normal';
+    $('set-rbrounds').value = String(s.rbRounds); $('set-rbmin').value = String(s.rbMinutes);
+    $('set-rb').classList.toggle('hidden', s.mode !== 'rb');                     // Rescue & Bomb options, and hide the "win by tagging / time limit" rows
+    $('row-kills').classList.toggle('hidden', s.mode === 'rb'); $('row-minutes').classList.toggle('hidden', s.mode === 'rb');
     Array.prototype.forEach.call($('set-diff').children, function (b) { b.classList.toggle('on', b.dataset.v === s.diff); });
     $('set-gmin').value = s.gradeMin; $('set-gmax').value = s.gradeMax;
     $('set-qtime').value = s.qTime; $('set-reward').value = s.reward; $('set-wrong').value = s.wrongAmmo; $('set-ansmode').value = s.answerMode;
@@ -82,6 +86,9 @@
     const num = function (id, key) { $(id).addEventListener('change', function () { s[key] = Number($(id).value); save(); updatePool(); }); };
     $('set-name').addEventListener('input', function () { s.name = $('set-name').value.replace(/[<>]/g, '').trim().slice(0, 12) || 'Cadet'; save(); });
     num('set-bots', 'botsPerTeam'); num('set-kills', 'targetKills'); num('set-minutes', 'minutes');
+    $('set-mode').addEventListener('change', function () { s.mode = $('set-mode').value === 'rb' ? 'rb' : 'normal'; save(); fillForm(); });
+    $('set-rbrounds').addEventListener('change', function () { s.rbRounds = Number($('set-rbrounds').value); save(); });
+    $('set-rbmin').addEventListener('change', function () { s.rbMinutes = Number($('set-rbmin').value); save(); });
     num('set-gmin', 'gradeMin'); num('set-gmax', 'gradeMax');
     num('set-qtime', 'qTime'); num('set-reward', 'reward'); num('set-wrong', 'wrongAmmo');
     $('set-ansmode').addEventListener('change', function () { s.answerMode = $('set-ansmode').value; save(); });

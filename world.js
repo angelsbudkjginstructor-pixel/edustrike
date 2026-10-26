@@ -826,8 +826,30 @@
       if (blockedAt(c[0], c[1], 1.2) || blockedAt(-c[0], -c[1], 1.2)) return;
       crateSpots.push({ x: c[0], z: c[1] }); crateSpots.push({ x: -c[0], z: -c[1] });
     });
+    /* Rescue & Bomb spots: the hostage (deep in the red half), the bomb site (on the blue half) and the blue safe zone (next to the blue spawn).
+       The same answer on every computer (no random numbers), always on open ground that can be walked to from the blue spawn. */
+    function pickSpot(cands, r) {
+      for (let i = 0; i < cands.length; i++) {
+        const c = cands[i], cell = cellOf(c[0], c[1]);
+        if (!blockedAt(c[0], c[1], r) && reach[cell] && free[cell]) return { x: c[0], z: c[1] };
+      }
+      for (let ring = 1; ring <= 14; ring++) {                    // nothing in the list was free: search outward from the first one
+        for (let k = 0; k < 16; k++) {
+          const a = k / 16 * Math.PI * 2, x = cands[0][0] + Math.cos(a) * ring, z = cands[0][1] + Math.sin(a) * ring;
+          if (Math.abs(x) > HALF - 3 || Math.abs(z) > HALF - 3) continue;
+          const cell = cellOf(x, z);
+          if (!blockedAt(x, z, r) && reach[cell] && free[cell]) return { x: Math.round(x * 2) / 2, z: Math.round(z * 2) / 2 };
+        }
+      }
+      return { x: cands[0][0], z: cands[0][1] };
+    }
+    const rbSpots = {
+      h: pickSpot([[0, -19], [7, -19], [-7, -19], [0, -15], [12, -17], [-12, -17], [0, -23], [6, -13], [-6, -13]], 1.4),
+      z: pickSpot([[0, 12], [9, 10], [-9, 10], [0, 16], [14, 13], [-14, 13], [0, 8], [7, 15], [-7, 15]], 1.4),
+      s: pickSpot([[0, 21.5], [6, 21.5], [-6, 21.5], [0, 18.5], [0, 23.5], [10, 21.5], [-10, 21.5]], 1.6)
+    };
     return {
-      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID, crateSpots: crateSpots,
+      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID, crateSpots: crateSpots, rbSpots: rbSpots,
       collide: collide, groundAt: groundAt,
       rayWorld: rayWorld, clearLine: clearLine,
       findPath: findPath, randomSpot: randomSpot, lineFree: lineFree, blockedAt: blockedAt,

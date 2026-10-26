@@ -84,13 +84,28 @@
           <option value="5">5 vs 5</option><option value="6">6 vs 6</option>
         </select>
       </label>
-      <label class="row">Win by tagging
+      <label class="row">Game mode
+        <select id="set-mode">
+          <option value="normal">⚔️ Normal – tag the other team</option>
+          <option value="rb">🆘💣 Rescue &amp; Bomb – rounds</option>
+        </select>
+      </label>
+      <div id="set-rb" class="hidden">
+        <label class="row">Rounds (best of)
+          <select id="set-rbrounds"><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="7">7</option><option value="9">9</option></select>
+        </label>
+        <label class="row">Time per round
+          <select id="set-rbmin"><option value="2">2 minutes</option><option value="3">3 minutes</option><option value="4">4 minutes</option><option value="5">5 minutes</option></select>
+        </label>
+        <p class="hint"><b style="color:#2f86ff">Blue</b>: free the 🆘 hostage (press <b>E</b> next to them, answer a question) and bring them to the blue zone – or defuse the bomb. <b style="color:#ff5a3c">Red</b>: plant the 💣 (<b>E</b> + answer). If nobody defuses it in 15 seconds – BOOM! First team to win most rounds wins.</p>
+      </div>
+      <label class="row" id="row-kills">Win by tagging
         <select id="set-kills">
           <option value="10">10 enemies</option><option value="15">15 enemies</option>
           <option value="20">20 enemies</option><option value="30">30 enemies</option>
         </select>
       </label>
-      <label class="row">Time limit
+      <label class="row" id="row-minutes">Time limit
         <select id="set-minutes">
           <option value="3">3 minutes</option><option value="5">5 minutes</option>
           <option value="8">8 minutes</option><option value="10">10 minutes</option>
@@ -191,6 +206,7 @@
         <div><kbd>Shift</kbd> run &nbsp; <kbd>Space</kbd> jump (hop onto low crates!)</div>
         <div><b>Mouse</b> look &nbsp; <b>Left click</b> (or <kbd>F</kbd>) fire</div>
         <div><kbd>R</kbd> <b>answer a question to get ammo ⚡</b></div>
+        <div><kbd>E</kbd> <b>Rescue &amp; Bomb mode: rescue the hostage / plant / defuse the bomb (answer a question next to it)</b></div>
         <div>In a question: <kbd>1</kbd>–<kbd>4</kbd> or <kbd>A</kbd>–<kbd>D</kbd> or click</div>
         <div><kbd>Tab</kbd> hold: scoreboard &nbsp; <kbd>Esc</kbd> pause</div>
       </div>
@@ -215,6 +231,8 @@
       <div class="mid"><div id="sc-time">5:00</div><div id="sc-target"></div></div>
       <div class="team red"><span id="sc-red">0</span></div>
     </div>
+    <div id="rb-bar" class="hidden"></div>
+    <div id="rb-hint" class="hidden"></div>
     <div id="fps"></div>
     <canvas id="radar" width="132" height="132"></canvas>
     <div id="feed"></div>
@@ -236,6 +254,7 @@
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp; <kbd>Shift</kbd> run &nbsp; <kbd>Space</kbd> jump</div>
         <div id="ready-look">Mouse = look &amp; aim · Left click = fire</div>
         <div><kbd>R</kbd> = <b>answer a question → get ammo ⚡</b></div>
+        <div id="ready-rb" class="hidden"><kbd>E</kbd> = <b>rescue / plant / defuse (answer a question next to the 🆘 or 💣)</b></div>
       </div>
       <button id="btn-ready" class="btn big" type="button">▶ CLICK TO START</button>
       <button id="btn-ready-quit" class="btn small ghost" type="button">Back to menu</button>
@@ -243,6 +262,9 @@
   </div>
 
   <div id="ov-count" class="overlay clear hidden"><div id="count-num">3</div></div>
+  <!-- Rescue & Bomb: banner between rounds -->
+  <div id="ov-round" class="overlay clear hidden"><div class="roundcard"><div id="rd-title">ROUND 1</div><div id="rd-sub"></div></div></div>
+  <div id="boom-flash"></div>
 
   <div id="ov-pause" class="overlay hidden">
     <div class="card">
@@ -297,6 +319,7 @@
 <script src="quiz.js"></script>
 <script src="world.js"></script>
 <script src="bots.js"></script>
+<script src="rb.js"></script>
 <script src="game.js"></script>
 <script src="gate.js"></script>
 <script src="net.js"></script>
