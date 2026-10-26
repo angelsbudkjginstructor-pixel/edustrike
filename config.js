@@ -51,7 +51,7 @@
   /* Your questions, from a Google Sheet.
      Paste the "Publish to web" CSV link of your Questions sheet between the quotes (the setup steps are in README.md).
      Leave it empty ('') to use only the built-in questions. */
-  ES.QUESTION_SHEET = { url: '', timeoutMs: 9000 };
+  ES.QUESTION_SHEET = { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3isth7FhF83iVbbQSd7Vg9p46lcB6SweL3vZ5ErVXziIUQZ-Jd14A75_8EJoIoMi8BOdLaVB69NWs/pub?output=csv', timeoutMs: 9000 };
 
   /* Teacher ON/OFF switch.
      Paste the Apps Script "Web app URL" between the quotes (see SETUP step).
