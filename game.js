@@ -21,6 +21,7 @@
   let raf = 0, lastT = 0;
   let keys = {}, yaw = 0, pitch = 0, fireHeld = false, rightDown = false, locked = false;
   let tracers = [], sparks = [], tracerI = 0, gun, muzzle, shared;
+  let crates = [], crateClock = 0;      // weapon crates lying on the map
   let radarBase, radarCtx, radarT = 0, hudT = 0;
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
   let toastT = 0, closeTimer = 0, relockTimer = 0;
@@ -63,16 +64,26 @@
 
     /* scene: sky gradient, fog, lights */
     scene = new T.Scene();
+    const mapId = (opts && opts.net && opts.net.map) || st.map;
+    const SKY = (ES.MAP_SKY && ES.MAP_SKY[mapId]) || null;       // night / jungle sky, or null = normal sunny sky
     const sc = document.createElement('canvas'); sc.width = 2; sc.height = 128;
     const sx = sc.getContext('2d'), grad = sx.createLinearGradient(0, 0, 0, 128);
-    grad.addColorStop(0, '#5db7ff'); grad.addColorStop(0.6, '#bfe6ff'); grad.addColorStop(1, '#eaf7ff');
+    if (SKY) { grad.addColorStop(0, SKY.top); grad.addColorStop(0.55, SKY.mid); grad.addColorStop(1, SKY.bot); }
+    else { grad.addColorStop(0, '#5db7ff'); grad.addColorStop(0.6, '#bfe6ff'); grad.addColorStop(1, '#eaf7ff'); }
     sx.fillStyle = grad; sx.fillRect(0, 0, 2, 128);
     const skyTex = new T.CanvasTexture(sc);
     if (T.SRGBColorSpace) skyTex.colorSpace = T.SRGBColorSpace;
     scene.background = skyTex;
-    scene.fog = new T.Fog(0xcfeaff, gfx.fancy ? 45 : 22, gfx.fog);
-    scene.add(new T.HemisphereLight(0xffffff, 0x8fae7a, 2.1));
-    const sun = sunLight = new T.DirectionalLight(0xfff4e0, 1.6);
+    scene.fog = new T.Fog(SKY ? SKY.fog : 0xcfeaff, gfx.fancy ? 45 : 22, gfx.fog);
+    scene.add(new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? 1.6 : 2.1));
+    const sun = sunLight = new T.DirectionalLight(SKY ? SKY.sun : 0xfff4e0, 1.6);
+    if (SKY && SKY.stars) {                                       // a cheap field of stars (one Points object, 260 dots)
+      const sp = new Float32Array(260 * 3);
+      for (let i = 0; i < 260; i++) { const a = Math.random() * 6.283, el = 0.15 + Math.random() * 1.3, r = 120; sp[i * 3] = Math.cos(a) * Math.cos(el) * r; sp[i * 3 + 1] = Math.sin(el) * r; sp[i * 3 + 2] = Math.sin(a) * Math.cos(el) * r; }
+      const sg = new T.BufferGeometry(); sg.setAttribute('position', new T.BufferAttribute(sp, 3));
+      const stars = new T.Points(sg, new T.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false }));
+      stars.frustumCulled = false; scene.add(stars);
+    }
     sun.position.set(25, 45, 15);
     if (gfx.shadows) {
       sun.castShadow = true;
@@ -88,6 +99,7 @@
     buildShared();
     buildGun();
     buildEffects();
+    buildCrates();
 
     /* ---- create the fighters ---- */
     ents = [];
@@ -121,6 +133,7 @@
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
       total: (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
+      weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0x7fffffff,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
@@ -138,6 +151,7 @@
     G.active = true;
     lastT = performance.now();
     raf = requestAnimationFrame(frame);
+    ES.audio.setMap(world.map);     // each map has its own music flavour
     ES.audio.music.start('menu');   // calm theme until the player clicks Start
     return { ok: true, pool: quiz.size, fallback: quiz.usedFallback };
   };
@@ -483,10 +497,10 @@
     if (!target.isPlayer) G.soundAt('scream', target.x, target.z, 0.9);       // bots scream too (quieter when far away)
     if (attacker) {
       attacker.kills++; S.score[attacker.team]++;
-      feed(attacker, target, head);
+      feed(attacker, target, head); announceKill(attacker);
     }
     if (target.isPlayer) {
-      S.stats.deaths++;
+      S.stats.deaths++; dropWeapon(true);
       if (S.qOpen) cancelQuestion(true);
       fireHeld = false;
       $('death-text').textContent = attacker ? 'Tagged by ' + attacker.name + '!' : 'You were tagged!';
@@ -497,20 +511,35 @@
     if (S.score[0] >= S.target || S.score[1] >= S.target) endMatch('score');
   }
 
+  /* announcer: first blood, double / triple kill (your own tags within 5 seconds of each other) */
+  function announceKill(attacker) {
+    if (!S.fbDone) { S.fbDone = true; ES.audio.announce('first'); }
+    if (attacker && attacker.isPlayer) {
+      const now = performance.now();
+      S.multi = (S.multiT && now - S.multiT < 5000) ? S.multi + 1 : 1; S.multiT = now;
+      if (S.multi === 2) setTimeout(function () { ES.audio.announce('k2'); }, 300);
+      else if (S.multi === 3) setTimeout(function () { ES.audio.announce('k3'); }, 300);
+      else if (S.multi >= 4) setTimeout(function () { ES.audio.announce('k4'); }, 300);
+    }
+  }
+  function announceClock() {
+    if (!S.min1 && S.total > 100 && S.timeLeft <= 60 && S.timeLeft > 0) { S.min1 = true; ES.audio.announce('min1'); }
+  }
+
   function feed(a, t, head) {
     S.feed.unshift({ a: a, t: t, head: head, life: 5 });
     if (S.feed.length > 5) S.feed.pop();
     S.feedDirty = true;
   }
 
-  G.addTracer = function (ax, ay, az, bx, by, bz, team) {
+  G.addTracer = function (ax, ay, az, bx, by, bz, team, color) {
     const tr = tracers[tracerI++ % tracers.length], m = tr.mesh;
     const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (len < 0.1) return;
     m.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
     m.lookAt(bx, by, bz);
     m.scale.set(1, 1, len);
-    m.material.color.setHex(team === 1 ? 0xff9a6d : 0x7fd0ff);
+    m.material.color.setHex(color || (team === 1 ? 0xff9a6d : 0x7fd0ff));
     m.material.opacity = 0.9; m.visible = true; tr.life = 0.12;
   };
 
@@ -541,32 +570,120 @@
     ES.audio.sfx(name, vol, d > 0.1 ? clamp((dx * rx + dz * rz) / d, -1, 1) * 0.8 : 0);
   };
 
-  function playerShoot() {
-    S.ammo--; S.fireCd = P.fireInterval; S.stats.shots++;
-    const moving = Math.hypot(player.vx, player.vz) > 1;
-    const sp = moving ? 0.012 : 0.004;
+  /* ---------------- bonus weapons ---------------- */
+  function giveWeapon(id) {
+    const W = ES.WEAPONS[id]; if (!W || id === 'pistol' || !S) return;
+    S.weapon = id; S.wAmmo = W.mag; S.wTime = W.secs; S.fireCd = 0.2;
+    toast(W.icon + ' ' + W.name + '! ' + W.mag + ' shots, ' + W.secs + ' seconds', 3);
+    ES.audio.sfx('pickup'); ES.audio.announce && ES.audio.announce('weapon');
+  }
+  function dropWeapon(silent) {
+    if (!S || S.weapon === 'pistol') return;
+    S.weapon = 'pistol'; S.wAmmo = 0; S.wTime = 0;
+    if (!silent) { toast('Back to your blaster 🔫', 1.6); ES.audio.sfx('wpnEnd'); }
+  }
+  function randomWeapon() {
+    const list = ES.WEAPON_IDS.filter(function (w) { return w !== S.weapon; });
+    return list[Math.floor(Math.random() * list.length)];
+  }
+  /* 3 right answers in a row = a bonus weapon (solo: given here, class match: the referee gives it) */
+  function earnWeapon() {
+    if (NET) netSend({ t: 'earn' }); else giveWeapon(randomWeapon());
+  }
+  G.netWeapon = function (m) { if (NET && S && S.phase === 'play' && player.alive && m && ES.WEAPONS[m.w]) giveWeapon(m.w); };
+
+  function buildCrates() {
+    crates = []; crateClock = 0;
+    const spots = (world && world.crateSpots) || [];
+    const bg = new T.BoxGeometry(0.7, 0.7, 0.7), bm = new T.MeshBasicMaterial({ color: 0xffd23f });
+    const rg = new T.BoxGeometry(0.78, 0.12, 0.78), rm = new T.MeshBasicMaterial({ color: 0xff7a1f });
+    const cg = new T.CylinderGeometry(0.5, 0.5, 7, 10, 1, true);
+    spots.forEach(function (sp, i) {
+      const g = new T.Group(); g.position.set(sp.x, 0, sp.z);
+      const box = new T.Mesh(bg, bm); box.position.y = 1.0; g.add(box);
+      const band = new T.Mesh(rg, rm); band.position.y = 1.0; box.add(band);
+      const beam = new T.Mesh(cg, new T.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.22, depthWrite: false, side: T.DoubleSide, fog: false }));
+      beam.position.y = 3.5; g.add(beam);
+      scene.add(g);
+      crates.push({ x: sp.x, z: sp.z, g: g, box: box, ready: true, t: 0, i: i });
+    });
+  }
+  function updateCrates(dt) {
+    if (!crates.length) return;
+    crateClock += dt;
+    for (let i = 0; i < crates.length; i++) {
+      const c = crates[i];
+      if (NET) c.ready = !!(S.crMask & (1 << c.i));
+      else if (!c.ready) { c.t -= dt; if (c.t <= 0) c.ready = true; }
+      else if (S.phase === 'play' && player.alive && Math.hypot(player.x - c.x, player.z - c.z) < ES.CRATE.radius && player.y < 1.6) {
+        c.ready = false; c.t = ES.CRATE.respawn; giveWeapon(randomWeapon());
+      }
+      c.g.visible = c.ready;
+      if (c.ready) { c.box.rotation.y = crateClock * 1.6; c.box.position.y = 1.0 + Math.sin(crateClock * 2.2 + i) * 0.13; }
+    }
+  }
+
+  /* aim direction with a little random wobble (sp = how much) */
+  function aimDir(sp) {
     const cp = Math.cos(pitch);
     let dx = -Math.sin(yaw) * cp + (Math.random() - 0.5) * sp * 2, dy = Math.sin(pitch) + (Math.random() - 0.5) * sp * 2, dz = -Math.cos(yaw) * cp + (Math.random() - 0.5) * sp * 2;
-    const l = Math.sqrt(dx * dx + dy * dy + dz * dz); dx /= l; dy /= l; dz /= l;
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return [dx / l, dy / l, dz / l];
+  }
+
+  function playerShoot() {
+    const wid = S.weapon, W = ES.WEAPONS[wid] || ES.WEAPONS.pistol, bonus = wid !== 'pistol';
+    if (bonus) S.wAmmo--; else S.ammo--;
+    S.fireCd = W.interval; S.stats.shots++;
+    const moving = Math.hypot(player.vx, player.vz) > 1;
     const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
-    const res = G.castShot(player, ox, oy, oz, dx, dy, dz, 90, st.aimAssist ? 1.7 : 1);
-    if (NET) netSend({ t: 'shot', ox: r2(ox), oy: r2(oy), oz: r2(oz), ex: r2(ox + dx * res.t), ey: r2(oy + dy * res.t), ez: r2(oz + dz * res.t), tid: res.target ? res.target.eid : -1, h: res.head ? 1 : 0 });
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-    G.addTracer(ox + dx * 0.6 + rx * 0.22, oy + dy * 0.6 - 0.18, oz + dz * 0.6 + rz * 0.22, ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, myTeam());
-    ES.audio.sfx('shoot', 0.9);
-    muzzle.visible = true; S.muzzleT = 0.05; S.recoil = 1;
-    if (res.target) {
-      S.stats.hits++;
-      if (res.head) S.stats.heads++;
-      const hit = NET ? (res.target.alive && res.target.protT <= 0) : G.damage(res.target, res.head ? P.headDamage : P.damage, player, res.head);
-      if (hit) {
-        S.hitMark = 0.18; S.hitHead = res.head;
-        burst(ox + dx * res.t, oy + dy * res.t, oz + dz * res.t, ES.TEAMS[1 - myTeam()].color, 5);
-        if (res.target.alive) ES.audio.sfx(res.head ? 'headshot' : 'hit');
+    const col = bonus ? W.color : 0;
+    const aim = st.aimAssist ? (W.pellets > 1 ? 1.3 : 1.7) : 1;
+    let hitAny = false, headAny = false, first = null, hits = [], sendEnd = null;
+    for (let n = 0; n < W.pellets; n++) {
+      const d = aimDir(W.pellets > 1 ? W.spread : (bonus ? W.spread : (moving ? 0.012 : 0.004)));
+      const res = G.castShot(player, ox, oy, oz, d[0], d[1], d[2], W.range, aim);
+      if (!first) { first = res; sendEnd = [ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t]; }
+      if (n < 3 || W.pellets === 1) G.addTracer(ox + d[0] * 0.6 + rx * 0.22, oy + d[1] * 0.6 - 0.18, oz + d[2] * 0.6 + rz * 0.22, ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, myTeam(), col);
+      if (res.target) {
+        S.stats.hits++; if (res.head) S.stats.heads++;
+        hits.push([res.target.eid, res.head ? 1 : 0]);
+        if (NET) { if (res.target.alive && res.target.protT <= 0) { hitAny = true; if (res.head) headAny = true; } }
+        else if (G.damage(res.target, res.head ? W.head : W.dmg, player, res.head)) { hitAny = true; if (res.head) headAny = true; }
+        burst(ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, ES.TEAMS[1 - myTeam()].color, 3);
+      } else if (n < 2) {
+        burst(ox + d[0] * (res.t - 0.05), oy + d[1] * (res.t - 0.05), oz + d[2] * (res.t - 0.05), 0xd8d8d8, 3);
       }
-    } else {
-      burst(ox + dx * (res.t - 0.05), oy + dy * (res.t - 0.05), oz + dz * (res.t - 0.05), 0xd8d8d8, 3);
     }
+    if (NET) {
+      const msg = { t: 'shot', ox: r2(ox), oy: r2(oy), oz: r2(oz), ex: r2(sendEnd[0]), ey: r2(sendEnd[1]), ez: r2(sendEnd[2]), tid: first.target ? first.target.eid : -1, h: first.head ? 1 : 0 };
+      if (bonus) msg.w = wid;
+      if (W.pellets > 1) msg.hits = hits;
+      netSend(msg);
+    }
+    if (W.splash) {                                    // rocket: a big blast where it lands, hurting everybody close by
+      const bx = sendEnd[0], by = sendEnd[1], bz = sendEnd[2];
+      burst(bx, by, bz, 0xff8a3c, 16); burst(bx, by + 0.4, bz, 0xffd23f, 10);
+      ES.audio.sfx('boom', 0.9);
+      for (let k = 0; k < ents.length; k++) {
+        const t = ents[k];
+        if (!t.alive || t.team === myTeam() || (first.target === t)) continue;
+        const d2 = Math.hypot(t.x - bx, (t.y + 1) - by, t.z - bz);
+        if (d2 < W.splashR) {
+          if (NET) { if (t.protT <= 0) hitAny = true; }
+          else if (G.damage(t, Math.max(10, W.splash * (1 - d2 / W.splashR)), player, false)) hitAny = true;
+        }
+      }
+    }
+    ES.audio.sfx(bonus ? 'w_' + wid : 'shoot', 0.9);
+    muzzle.visible = true; S.muzzleT = 0.05; S.recoil = bonus && W.interval > 0.5 ? 1.8 : 1;
+    if (hitAny) {
+      S.hitMark = 0.18; S.hitHead = headAny;
+      if (first.target && first.target.alive) ES.audio.sfx(headAny ? 'headshot' : 'hit');
+      else if (!first.target) ES.audio.sfx('hit');
+    }
+    if (bonus && S.wAmmo <= 0) dropWeapon(false);
   }
 
   /* =====================================================================
@@ -622,7 +739,9 @@
       S.ammo = Math.min(AMMO.max, S.ammo + gain);
       S.qCd = 2;
       fb.className = 'qfb good';
-      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '');
+      const earn = S.streak > 0 && S.streak % 3 === 0;
+      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
+      if (earn) setTimeout(function () { if (S && S.phase === 'play') earnWeapon(); }, 1150);
       ES.audio.sfx('correct');
       setTimeout(function () { ES.audio.sfx('reload'); }, 520); setTimeout(function () { ES.audio.sfx('reload', 0.9); }, 800);   // click-clack: blaster reloaded
       closeTimer = setTimeout(function () { closeQuestion(); }, 1100);
@@ -722,6 +841,7 @@
     buildEndScreen(outcome);
     show('ov-end', true);
     ES.audio.sfx(outcome === 'win' ? 'win' : (outcome === 'lose' ? 'lose' : 'go'));
+    setTimeout(function () { ES.audio.announce(outcome); }, 700);
   }
 
   function buildEndScreen(outcome) {
@@ -921,7 +1041,7 @@
         if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); }
       }
       if (S.countT <= 0) {
-        S.phase = 'play'; show('ov-count', false); toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go');
+        S.phase = 'play'; show('ov-count', false); toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
       }
       return;
     }
@@ -930,7 +1050,7 @@
     /* ---- playing ---- */
     const slow = S.qOpen && st.answerMode === 'slow';
     const wdt = slow ? dt * 0.15 : dt;
-    S.timeLeft -= wdt;
+    S.timeLeft -= wdt; announceClock();
     if (S.timeLeft <= 0) { S.timeLeft = 0; endMatch('time'); return; }
     S.qCd = Math.max(0, S.qCd - dt);
     if (S.qOpen && S.qState === 'asking' && st.qTime) {
@@ -975,6 +1095,8 @@
     S.sinceHurt += dt;
     if (S.fireCd > 0) S.fireCd -= dt;
     if (p.protT > 0) p.protT -= dt;
+    updateCrates(dt);
+    if (S.weapon !== 'pistol') { S.wTime -= dt; if (S.wTime <= 0) dropWeapon(false); }
     if (!p.alive) {
       p.respawnT -= dt;
       $('death-count').textContent = Math.max(1, Math.ceil(p.respawnT));
@@ -1014,7 +1136,7 @@
 
     // blaster
     if (fireHeld && S.fireCd <= 0 && !S.qOpen) {
-      if (S.ammo > 0) playerShoot();
+      if (S.weapon !== 'pistol' || S.ammo > 0) playerShoot();
       else { S.fireCd = 0.35; ES.audio.sfx('empty'); toast('Out of ammo! Press R and answer a question ⚡', 1.6); S.pulseAmmo = 1; }
     }
   }
@@ -1116,10 +1238,20 @@
     setText('hp-text', String(Math.ceil(p.hp)));
     const hpEl = $('hp-fill'); hpEl.style.width = clamp(p.hp, 0, 100) + '%';
     hpEl.className = p.hp < 30 ? 'low' : '';
-    setText('ammo-num', String(S.ammo));
-    $('ammo').classList.toggle('empty', S.ammo === 0);
-    $('ammo').classList.toggle('low', S.ammo > 0 && S.ammo <= 4);
-    setText('ammo-hint', S.ammo === 0 ? 'Press R – answer a question!' : (S.ammo <= 4 ? 'Low! Press R to recharge' : 'R = recharge'));
+    if (S.weapon !== 'pistol') {                            // bonus weapon: show its own shots + time left
+      const W = ES.WEAPONS[S.weapon];
+      setText('ammo-lbl', W.icon + ' ' + W.name.toUpperCase());
+      setText('ammo-num', String(S.wAmmo));
+      $('ammo').classList.remove('empty', 'low'); $('ammo').classList.add('bonus');
+      setText('ammo-hint', Math.ceil(S.wTime) + ' s left  ·  blaster ⚡' + S.ammo);
+    } else {
+      setText('ammo-lbl', '⚡ AMMO');
+      setText('ammo-num', String(S.ammo));
+      $('ammo').classList.remove('bonus');
+      $('ammo').classList.toggle('empty', S.ammo === 0);
+      $('ammo').classList.toggle('low', S.ammo > 0 && S.ammo <= 4);
+      setText('ammo-hint', S.ammo === 0 ? 'Press R – answer a question!' : (S.ammo <= 4 ? 'Low! Press R to recharge' : 'R = recharge'));
+    }
     setText('streak', S.streak >= 2 ? '🔥 ' + S.streak + ' right in a row' : '');
     // damage flash + direction arrow
     if (S.dmgFlash > 0) S.dmgFlash = Math.max(0, S.dmgFlash - dt * 1.2);
@@ -1200,7 +1332,7 @@
     netInterp(dt);
     if (S.phase === 'play') {
       S.qCd = Math.max(0, S.qCd - dt);
-      S.timeLeft = Math.max(0, S.timeLeft - dt);          // the referee corrects this a few times a second
+      S.timeLeft = Math.max(0, S.timeLeft - dt); announceClock();         // the referee corrects this a few times a second
       if (S.qOpen && S.qState === 'asking' && st.qTime) {
         S.qTime -= dt;
         $('qp-fill').style.width = Math.max(0, 100 * S.qTime / st.qTime) + '%';
@@ -1244,7 +1376,7 @@
       if (n !== NET.cdLast) { NET.cdLast = n; if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); } }
     } else if (ph === 'play' && S.phase !== 'play') {
       S.phase = 'play'; show('ov-count', false);
-      toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go');
+      toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
     }
   }
 
@@ -1252,6 +1384,7 @@
     if (!NET || !G.active || !S) return;
     S.score = [m.sc[0], m.sc[1]];
     S.timeLeft = m.tl;
+    if (typeof m.cr === 'number') S.crMask = m.cr;
     netPhase(m.ph, m.cd);
     for (let i = 0; i < m.ev.length; i++) netEvent(m.ev[i]);
     for (let i = 0; i < m.e.length; i++) {
@@ -1276,12 +1409,16 @@
     const k = ev[0];
     if (k === 'shot') {
       if (ev[8] === NET.you) return;                       // our own shot is already drawn
-      G.addTracer(ev[1], ev[2], ev[3], ev[4], ev[5], ev[6], ev[7]);
-      G.soundAt('botShoot', ev[1], ev[3], 0.7);
+      const WW = ev[9] && ES.WEAPONS[ev[9]];
+      G.addTracer(ev[1], ev[2], ev[3], ev[4], ev[5], ev[6], ev[7], WW ? WW.color : 0);
+      G.soundAt(WW ? 'w_' + ev[9] : 'botShoot', ev[1], ev[3], WW ? 0.8 : 0.7);
+    } else if (k === 'boom') {
+      burst(ev[1], ev[2], ev[3], 0xff8a3c, 16); burst(ev[1], ev[2] + 0.4, ev[3], 0xffd23f, 10);
+      if (ev[4] !== NET.you) G.soundAt('boom', ev[1], ev[3], 1);
     } else if (k === 'kill') {
       const a = NET.byEid[ev[1]], v = NET.byEid[ev[2]];
       if (!v) return;
-      v.deaths++; if (a) { a.kills++; feed(a, v, !!ev[3]); }
+      v.deaths++; if (a) { a.kills++; feed(a, v, !!ev[3]); announceKill(a); }
       burst(v.x, v.y + 1, v.z, ES.TEAMS[v.team].color, 12);
       if (v !== player) G.soundAt('scream', v.x, v.z, 0.9);
       if (v === player) $('death-text').textContent = a ? 'Tagged by ' + a.name + '!' : 'You were tagged!';
@@ -1299,7 +1436,7 @@
   function netDie() {
     const p = player;
     p.alive = false; p.hp = 0; p.respawnT = P.respawn;
-    S.stats.deaths++;
+    S.stats.deaths++; dropWeapon(true);
     if (S.qOpen) cancelQuestion(true);
     fireHeld = false;
     show('ov-death', true);
@@ -1357,6 +1494,7 @@
     setFire: function (v) { fireHeld = v; },
     choose: chooseAnswer, closeQ: closeQuestion,
     end: endMatch, get net() { return NET; },
+    give: giveWeapon, shoot: playerShoot,
     step: function (n, dt) { for (let i = 0; i < n; i++) tick(dt); }   // run the game without drawing (used for fast automatic tests)
   };
 })();

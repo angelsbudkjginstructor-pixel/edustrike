@@ -15,8 +15,16 @@
   /* The maps the teacher can choose from (more are added stage by stage). All share the same size, bases and spawn points. */
   ES.MAPS_LIST = [
     { id: 'park', name: '🌳 Classic Park', desc: 'Open grass, walls and towers' },
-    { id: 'rooftops', name: '🏙️ City Rooftops', desc: 'Buildings with stairs - fight from the roofs!' }
+    { id: 'rooftops', name: '🏙️ City Rooftops', desc: 'Buildings with stairs - fight from the roofs!' },
+    { id: 'castle', name: '🏰 Castle', desc: 'Stone walls, a big keep and towers to climb' },
+    { id: 'jungle', name: '🌴 Jungle Ruins', desc: 'Old temple, mossy walls and thick trees' },
+    { id: 'space', name: '🚀 Space Station', desc: 'Metal decks, glowing lights and a night sky' }
   ];
+  /* sky + light colours for the maps that are not a sunny day (the other maps use the normal blue sky) */
+  ES.MAP_SKY = {
+    space:  { top: '#02030d', mid: '#0a1030', bot: '#1d2a5a', fog: 0x0c1330, hemiSky: 0x9fb4ff, hemiGround: 0x2a3050, sun: 0xcfd8ff, stars: true, trees: false },
+    jungle: { top: '#6fc4a8', mid: '#b9e6c2', bot: '#e6f4d0', fog: 0xbfe0b8, hemiSky: 0xf2ffe0, hemiGround: 0x4f7a3d, sun: 0xfff0c0 }
+  };
   ES.mapName = function (id) { const m = ES.MAPS_LIST.filter(function (x) { return x.id === id; })[0]; return m ? m.name : ES.MAPS_LIST[0].name; };
 
   /* opts.map      = which map to build (see ES.MAPS_LIST)
@@ -35,9 +43,18 @@
     const FANCY = !!opts.fancy, NOVIS = !!opts.noVisual;
     const MAPID = ES.MAPS_LIST.some(function (m) { return m.id === opts.map; }) ? opts.map : 'park';
     // colours and extras that make each map feel different
-    const THEME = MAPID === 'rooftops'
+    const THEME = MAPID === 'space'
+      ? { lowA: '#3a4258', lowB: '#323a4f', lowOuter: 0x1b2033, fancyBase: '#3b4358', fancyOuter: 0x1b2033, flowers: false, plaza: ['#56627f', '#4b5671'], blue: ['#4f7ed8', '#4573c8'], red: ['#d86a55', '#c85f4b'], lane: 'rgba(90,230,255,.75)',
+          sky: { top: '#02030d', mid: '#0a1030', bot: '#1d2a5a', fog: 0x0c1330, hemiSky: 0x9fb4ff, hemiGround: 0x2a3050, sun: 0xcfd8ff, stars: true, trees: false } }
+      : MAPID === 'jungle'
+      ? { lowA: '#5f8f4a', lowB: '#547f42', lowOuter: 0x3f6b3a, fancyBase: '#5c8c48', fancyOuter: 0x3f6b3a, flowers: false, plaza: ['#a9a78f', '#9a987f'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(0,0,0,0)',
+          sky: { top: '#6fc4a8', mid: '#b9e6c2', bot: '#e6f4d0', fog: 0xbfe0b8, hemiSky: 0xf2ffe0, hemiGround: 0x4f7a3d, sun: 0xfff0c0 } }
+      : MAPID === 'castle'
+      ? { lowA: '#b3aa94', lowB: '#a69d88', lowOuter: 0x6a9a5a, fancyBase: '#b1a88f', fancyOuter: 0x6cb868, flowers: false, plaza: ['#d8d0b8', '#cbc2a8'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(0,0,0,0)' }
+      : MAPID === 'rooftops'
       ? { lowA: '#9aa1ab', lowB: '#8d949f', lowOuter: 0x7d8a7a, fancyBase: '#8f969f', fancyOuter: 0x7fa07a, flowers: false, plaza: ['#c9ccd4', '#bcc0c9'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(255,214,90,.8)' }
       : { lowA: '#86cf74', lowB: '#78c466', lowOuter: 0x5fa65a, fancyBase: '#7cc86a', fancyOuter: 0x6cb868, flowers: true, plaza: ['#f1e7b8', '#e6d9a0'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(255,255,255,.55)' };
+    const NIGHT = !!(THEME.sky && THEME.sky.stars);     // space: no clouds or green hills
     const shade = function (hex, k) { const c = new T.Color(hex); c.multiplyScalar(k); return c.getHex(); };
     const boxes = [];    // solid things: {x0,x1,z0,z1,h}
     const vis = [];      // things to draw: boxes + cones (merged into one mesh later)
@@ -120,17 +137,18 @@
     /* Stairs: n steps, each 0.24 m higher (a player can walk straight up, because 0.24 is less than a step-up of 0.25).
        (fx, fz) = the building face the stairs touch, (dx, dz) = direction the stairs stick out of the building
        (one of them is +1/-1, the other 0), width = how wide they are across. The highest step touches the building. */
-    function stairs(fx, fz, dx, dz, width, n, color) {
-      const run = 0.45, rise = 0.24;
+    function stairs(fx, fz, dx, dz, width, n, color, base) {
+      const run = 0.45, rise = 0.24; base = base || 0;      // base = height of the floor the stairs start from (stairs on top of a block)
       for (let k = 1; k <= n; k++) {
         const dist0 = (n - k) * run, mid = dist0 + run / 2, h = k * rise;
         const cx = fx + dx * mid, cz = fz + dz * mid;
-        solid(cx, cz, dx ? run : width, dz ? run : width, h, k % 2 ? color : shade(color, 0.9), undefined, 'step', 0, true);
+        solid(cx, cz, dx ? run : width, dz ? run : width, base + h, k % 2 ? color : shade(color, 0.9), undefined, 'step', base, true);
       }
     }
     /* A low wall around a roof (cover while you fight up there). gap = where the stairs arrive, so you can step onto the roof. */
+    let STAIR_COL = 0xd8c9a3, RAIL_COL = 0xe6e9ef;      // per-map colours of stairs and roof walls
     function parapet(cx, cz, w, d, h, gap) {
-      const T2 = 0.4, H = 0.9, col = 0xe6e9ef;
+      const T2 = 0.4, H = 0.9, col = RAIL_COL;
       function seg(alongX, fixed, a, b, edge) {            // a wall piece from a to b along one axis, cut where the stairs arrive
         const pieces = [[a, b]];
         if (gap && gap.edge === edge) {
@@ -158,7 +176,7 @@
       let fx = cx, fz = cz, dx = 0, dz = 0;
       if (side === '+x') { fx = cx + w / 2; dx = 1; fz = c; } else if (side === '-x') { fx = cx - w / 2; dx = -1; fz = c; }
       else if (side === '+z') { fz = cz + d / 2; dz = 1; fx = c; } else { fz = cz - d / 2; dz = -1; fx = c; }
-      stairs(fx, fz, dx, dz, sw, n, 0xd8c9a3);
+      stairs(fx, fz, dx, dz, sw, n, STAIR_COL);
       parapet(cx, cz, w, d, h, { edge: side, c: c, w: sw + 0.5 });
     }
     const flipSide = { '+x': '-x', '-x': '+x', '+z': '-z', '-z': '+z' };
@@ -221,6 +239,63 @@
     both(26, -4, 1, 1, 5, 'tree');
     }
 
+    /* Castle battlements: little blocks ("merlons") with gaps between them along the roof edge, like a real castle.
+       gaps = places where stairs arrive: [{ edge: '+z', c: 0, w: 3.5 }, ...] (no blocks there, so you can step onto the roof) */
+    function crenels(cx, cz, w, d, h, gaps) {
+      const S = 0.9, G = 0.9, HH = 1.0, TH = 0.5, col = 0xd9d3c3;
+      [['-z', cz - d / 2 + TH / 2, true], ['+z', cz + d / 2 - TH / 2, true], ['-x', cx - w / 2 + TH / 2, false], ['+x', cx + w / 2 - TH / 2, false]].forEach(function (e) {
+        const alongX = e[2], len = alongX ? w : d, mid = alongX ? cx : cz;
+        const n = Math.max(1, Math.round((len - S) / (S + G)) + 1), step = n > 1 ? (len - S) / (n - 1) : 0;   // spread evenly, one block in each corner
+        for (let i = 0; i < n; i++) {
+          const pos = mid - len / 2 + S / 2 + step * i;
+          let skip = false;
+          (gaps || []).forEach(function (g) { if (g.edge === e[0] && Math.abs(pos - g.c) < g.w / 2 + S / 2) skip = true; });
+          if (skip) continue;
+          if (alongX) solid(pos, e[1], S, TH, h + HH, col, undefined, 'wall', h); else solid(e[1], pos, TH, S, h + HH, col, undefined, 'wall', h);
+        }
+      });
+    }
+    /* a climbable stone block with battlements and stairs (same idea as building(), but castle style) */
+    function castleBlock(cx, cz, w, d, h, color, side, c) {
+      solid(cx, cz, w, d, h, color, 0xe3dcc8, 'wall', 0, true);
+      const n = Math.round(h / 0.24), sw = 3;
+      let fx = cx, fz = cz, dx = 0, dz = 0;
+      if (side === '+x') { fx = cx + w / 2; dx = 1; fz = c; } else if (side === '-x') { fx = cx - w / 2; dx = -1; fz = c; }
+      else if (side === '+z') { fz = cz + d / 2; dz = 1; fx = c; } else { fz = cz - d / 2; dz = -1; fx = c; }
+      stairs(fx, fz, dx, dz, sw, n, 0xcfc4a8);
+      crenels(cx, cz, w, d, h, [{ edge: side, c: c, w: sw + 0.4 }]);
+    }
+
+    /* Castle: a big keep in the middle, towers with stairs, stone walls with a gate, banners on the keep. */
+    function buildCastle() {
+      // the keep (big stone block in the middle): stairs from the blue side and the red side
+      solid(0, 0, 10, 10, 3.84, 0xa8a49a, 0xe3dcc8, 'wall', 0, true);
+      stairs(0, 5, 0, 1, 3, 16, 0xcfc4a8);
+      stairs(0, -5, 0, -1, 3, 16, 0xcfc4a8);
+      crenels(0, 0, 10, 10, 3.84, [{ edge: '+z', c: 0, w: 3.4 }, { edge: '-z', c: 0, w: 3.4 }]);
+      // banners on the keep roof: blue and red
+      deco(-3.4, 3.84 + 1.6, -3.4, 0.12, 3.2, 0.12, 0xdddddd); deco(-3.4 + 0.65, 3.84 + 2.7, -3.4, 1.2, 0.8, 0.05, 0xff5a3c);
+      deco(3.4, 3.84 + 1.6, 3.4, 0.12, 3.2, 0.12, 0xdddddd);   deco(3.4 + 0.65, 3.84 + 2.7, 3.4, 1.2, 0.8, 0.05, 0x2f86ff);
+      // two towers on each half (the red half is the mirror of the blue half)
+      [[-15, 10, 4, 4, 2.88, '+x', 10], [15, 20, 4, 4, 2.88, '-x', 20]].forEach(function (b) {
+        [1, -1].forEach(function (sgn) {
+          const side = sgn > 0 ? b[5] : flipSide[b[5]];
+          castleBlock(b[0] * sgn, b[1] * sgn, b[2], b[3], b[4], 0x9a968c, side, b[6] * sgn);
+        });
+      });
+      // stone walls with a gate in the middle, and gate pillars
+      both(-8, 15, 9, 1.2, 2.6, 'wall'); both(8, 15, 9, 1.2, 2.6, 'wall');
+      both(-3.2, 15, 1.8, 1.8, 3.4, 'tower'); both(3.2, 15, 1.8, 1.8, 3.4, 'tower');
+      // cover in the yard
+      both(0, 22, 4, 1, 1.0, 'crate');
+      both(-20, 18, 1.6, 1.6, 0.9, 'crate'); both(-18.4, 18, 1.6, 1.6, 0.9, 'crate');
+      both(22, 8, 1.6, 1.6, 0.9, 'crate'); both(22, 9.6, 1.6, 1.6, 0.9, 'crate');
+      both(-9, 7, 1.6, 1.6, 0.9, 'crate'); both(10, 5, 1.6, 1.6, 0.9, 'crate');
+      both(-25, 3, 1, 1, 5, 'tree');
+      both(26, -4, 1, 1, 5, 'tree');
+      deco(0, 0.03, 0, 16, 0.06, 16, 0xc9bfa2);
+    }
+
     /* City Rooftops: five buildings you can climb. Stairs lead up, low walls on the roofs give cover. */
     function buildRooftops() {
       // the big building in the middle: stairs from the blue side AND the red side
@@ -256,23 +331,92 @@
       deco(0, 0.03, 0, 13, 0.06, 13, 0xd5d8df);
     }
 
-    if (MAPID === 'rooftops') buildRooftops(); else buildPark();
+    /* Jungle Ruins: a stepped old temple in the middle (stairs both sides), two ruined halls on each half, mossy walls, thick trees. */
+    function buildJungle() {
+      STAIR_COL = 0xb8b59a; RAIL_COL = 0x7f9a66;
+      const STONE = 0x9a9a84, MOSS = 0x6f8f55;
+      // temple: wide base + smaller top, stairs up from both teams' sides
+      solid(0, 0, 10, 10, 2.4, STONE, 0xb9b79d, 'wall', 0, true);
+      stairs(0, 5, 0, 1, 3, 10, STAIR_COL); stairs(0, -5, 0, -1, 3, 10, STAIR_COL);
+      solid(0, 0, 4, 4, 3.84, 0xa6a68e, 0xc4c2a6, 'wall', 0, true);          // the top tier
+      // steps from the base roof (2.4 m) up to the top tier (3.84 m), on the +x side and the -x side
+      stairs(2, 0, 1, 0, 3, 6, STAIR_COL, 2.4); stairs(-2, 0, -1, 0, 3, 6, STAIR_COL, 2.4);
+      deco(0, 3.84 + 0.7, 0, 0.9, 1.4, 0.9, 0xd9c36a);                      // golden idol on the top
+      // two ruined halls on each half (the red half is the mirror of the blue half)
+      [[-16, 9, 8, 6, 2.4, '+x', 9], [16, 19, 7, 6, 2.88, '-x', 19]].forEach(function (b) {
+        [[1, 0], [-1, 1]].forEach(function (m) {
+          const sgn = m[0], flip = m[1];
+          const cx = b[0] * sgn, cz = b[1] * sgn, side = flip ? flipSide[b[5]] : b[5], c = b[6] * sgn;
+          building(cx, cz, b[2], b[3], b[4], MOSS, 0x97b078, side, c);
+        });
+      });
+      // broken pillars, mossy walls and stone blocks for cover
+      both(-6, 17, 1.4, 1.4, 3.4, 'tower'); both(6, 17, 1.4, 1.4, 3.4, 'tower');
+      both(-10, 22, 5, 1, 2.2, 'wall'); both(9, 22, 4, 1, 2.2, 'wall');
+      both(-8, 12, 5, 1, 1.0, 'crate');
+      both(-24, 16, 1.6, 1.6, 0.9, 'crate'); both(-22.4, 16, 1.6, 1.6, 0.9, 'crate');
+      both(23, 8, 1.6, 1.6, 0.9, 'crate'); both(23, 9.6, 1.6, 1.6, 0.9, 'crate');
+      both(-4, 7, 1.6, 1.6, 0.9, 'crate'); both(12, 14, 1.6, 1.6, 0.9, 'crate');
+      // thick jungle trees that block the way
+      both(-25, 3, 1, 1, 5, 'tree'); both(26, -4, 1, 1, 5, 'tree'); both(-12, 14, 1, 1, 5, 'tree');
+      both(5, 24, 1, 1, 5, 'tree'); both(-20, 24, 1, 1, 5, 'tree'); both(19, 3, 1, 1, 5, 'tree');
+      deco(0, 0.03, 0, 15, 0.06, 15, 0x8a8b72);
+    }
+    /* Space Station: dark metal decks. A reactor block in the middle with stairs, two raised decks on each half, bulkhead walls with glowing strips. */
+    function buildSpace() {
+      STAIR_COL = 0x7c89aa; RAIL_COL = 0x5fe6ff;
+      const HULL = 0x6a7693;
+      solid(0, 0, 9, 9, 3.6, 0x59647e, 0x5fe6ff, 'wall', 0, true);          // reactor deck
+      stairs(0, 4.5, 0, 1, 3, 15, STAIR_COL); stairs(0, -4.5, 0, -1, 3, 15, STAIR_COL);
+      (function () {                                                          // glowing rail round the deck, with an opening at each stair
+        const H = 3.6, T2 = 0.4, col = RAIL_COL;
+        solid(-2.9, 4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H); solid(2.9, 4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H);
+        solid(-2.9, -4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H); solid(2.9, -4.3, 3.2, T2, H + 0.9, col, undefined, 'wall', H);
+        solid(-4.3, 0, T2, 8.4, H + 0.9, col, undefined, 'wall', H); solid(4.3, 0, T2, 8.4, H + 0.9, col, undefined, 'wall', H);
+      })();
+      [[-16, 9, 8, 6, 2.4, '+x', 9], [16, 19, 7, 6, 2.4, '-x', 19]].forEach(function (b) {
+        [[1, 0], [-1, 1]].forEach(function (m) {
+          const sgn = m[0], flip = m[1];
+          const cx = b[0] * sgn, cz = b[1] * sgn, side = flip ? flipSide[b[5]] : b[5], c = b[6] * sgn;
+          building(cx, cz, b[2], b[3], b[4], zoneBuildingColor(cz) === 0xc9d0dc ? HULL : (cz > 0 ? 0x4f6fb8 : 0xb8624f), 0x5fe6ff, side, c);
+        });
+      });
+      both(-6, 17, 6, 1, 2.6, 'wall'); both(9, 12, 4, 1, 2.6, 'wall');
+      both(0, 21, 5, 1, 1.0, 'crate');
+      both(-24, 14, 1.6, 1.6, 0.9, 'crate'); both(-22.4, 14, 1.6, 1.6, 0.9, 'crate');
+      both(22, 6, 1.6, 1.6, 0.9, 'crate'); both(22, 7.6, 1.6, 1.6, 0.9, 'crate');
+      both(-4, 8, 1.6, 1.6, 0.9, 'crate'); both(13, 24, 1.6, 1.6, 0.9, 'crate');
+      both(-15, 26, 2, 2, 3.5, 'tower'); both(15, 4, 2, 2, 3.5, 'tower');
+      // glowing floor strips
+      deco(0, 0.03, 0, 13, 0.06, 13, 0x4b5671);
+      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40, 0x5fe6ff); });
+    }
+
+    if (MAPID === 'rooftops') buildRooftops(); else if (MAPID === 'castle') buildCastle(); else if (MAPID === 'jungle') buildJungle(); else if (MAPID === 'space') buildSpace(); else buildPark();
 
     // ---- decoration (no collision): base pads, flags, ring of trees outside ----
-    deco(0, 0.03, 25.5, 20, 0.06, 9, 0xa9cdff);
-    deco(0, 0.03, -25.5, 20, 0.06, 9, 0xffb4a2);
+    const PADS = MAPID === 'space' ? [0x2d4f93, 0x93392f] : (MAPID === 'jungle' ? [0x9bbbe0, 0xe0a898] : [0xa9cdff, 0xffb4a2]);
+    deco(0, 0.03, 25.5, 20, 0.06, 9, PADS[0]);
+    deco(0, 0.03, -25.5, 20, 0.06, 9, PADS[1]);
     [[1, 0x2f86ff], [-1, 0xff5a3c]].forEach(function (t) {
       const z = 28.6 * t[0];
       deco(-12, 2.5, z, 0.2, 5, 0.2, 0xdddddd); deco(-11.2, 4.4, z, 1.6, 1.0, 0.06, t[1]);
       deco(12, 2.5, z, 0.2, 5, 0.2, 0xdddddd);  deco(12.8, 4.4, z, 1.6, 1.0, 0.06, t[1]);
     });
-    for (let i = 0; i < 26; i++) {
-      const a = (i / 26) * Math.PI * 2;
+    const RING = THEME.sky && THEME.sky.trees === false ? 0 : (MAPID === 'jungle' ? 40 : 26);
+    for (let i = 0; i < RING; i++) {
+      const a = (i / RING) * Math.PI * 2;
       const edge = 35 + (i % 3) * 3;                                   // distance of the tree from the middle, measured to a square
       const r = edge / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
       tree(Math.cos(a) * r, Math.sin(a) * r, false);
     }
-    for (let i = -28; i <= 28; i += 8) { tree(i, -35.5 - (i % 3), false); tree(i + 3, 35.5 + (i % 2), false); }
+    for (let i = -28; i <= 28 && RING; i += 8) { tree(i, -35.5 - (i % 3), false); tree(i + 3, 35.5 + (i % 2), false); }
+    if (!RING) {                                        // space station: glowing light pylons instead of trees
+      for (let i = -28; i <= 28; i += 8) [-1, 1].forEach(function (sg) {
+        cyl(i, 3, sg * 33.5, 0.35, 0.5, 6, 0x6b7694); deco(i, 6.2, sg * 33.5, 0.9, 0.5, 0.9, sg > 0 ? 0x5fe6ff : 0xff7ad9);
+      });
+      [-1, 1].forEach(function (sg) { for (let i = -24; i <= 24; i += 12) { cyl(sg * 33.5, 2.5, i, 0.35, 0.5, 5, 0x6b7694); deco(sg * 33.5, 5.3, i, 0.9, 0.5, 0.9, 0x5fe6ff); } });
+    }
 
     /* ---------- Fancy only: flowers, bushes, rocks, far hills, light beacons, clouds ---------- */
     const fx = { clouds: null, beams: [], t: 0 };
@@ -296,7 +440,7 @@
         else { sphere(x, 0.55, z, rr(0.7, 1.2), 0.8, [0x2f9a4e, 0x3bb35c, 0x57c46c][i % 3]); if (i % 2) sphere(x + 0.7, 0.4, z + 0.3, 0.55, 0.8, 0x3bb35c); }
       }
       // far hills (a ring of soft green and blue hills so the world has a horizon)
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; !NIGHT && i < 16; i++) {
         const a = (i / 16) * Math.PI * 2 + rr(-0.1, 0.1), r = rr(78, 96), big = rr(14, 26);
         sphere(Math.cos(a) * r, 0, Math.sin(a) * r, big, rr(0.45, 0.8), i % 3 === 0 ? 0x6fb0a8 : (i % 3 === 1 ? 0x5fb56a : 0x7ac07a));
       }
@@ -396,7 +540,7 @@
         /* clouds: white puffs high in the sky that drift slowly round the arena */
         const cp = [], tmpC = new T.Color(0xffffff);
         const cl = [];
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; !NIGHT && i < 9; i++) {
           const a = Math.random() * Math.PI * 2, r = 55 + Math.random() * 50, y = 42 + Math.random() * 14;
           for (let j = 0; j < 4; j++) cl.push([Math.cos(a) * r + (j - 1.5) * 4.5, y + (j % 2) * 1.2, Math.sin(a) * r + Math.random() * 3, 4 + Math.random() * 2.5]);
         }
@@ -632,8 +776,16 @@
       });
     }
 
+    /* Weapon crate spots: the same list for every computer (so the teacher's page and the students agree).
+       Candidates are on the blue half and mirrored to the red half; only open ground is used. */
+    const crateSpots = [];
+    [[0, 13], [-12, 19], [12, 13], [-20, 6], [20, 12], [0, 22], [-6, 10], [8, 22], [-14, 12], [14, 5]].forEach(function (c) {
+      if (crateSpots.length >= 6) return;
+      if (blockedAt(c[0], c[1], 1.2) || blockedAt(-c[0], -c[1], 1.2)) return;
+      crateSpots.push({ x: c[0], z: c[1] }); crateSpots.push({ x: -c[0], z: -c[1] });
+    });
     return {
-      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID,
+      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID, crateSpots: crateSpots,
       collide: collide, groundAt: groundAt,
       rayWorld: rayWorld, clearLine: clearLine,
       findPath: findPath, randomSpot: randomSpot, lineFree: lineFree, blockedAt: blockedAt,

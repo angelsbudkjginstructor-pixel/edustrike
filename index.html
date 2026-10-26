@@ -163,6 +163,7 @@
         <input id="set-musicvol" type="range" min="0" max="1" step="0.05">
       </label>
       <label class="row check"><input id="set-sound" type="checkbox"> 🔫 Sound effects (lasers)</label>
+      <label class="row check"><input id="set-announcer" type="checkbox"> 📢 Announcer voice ("Double kill!", "Victory!")</label>
       <label class="row check"><input id="set-scream" type="checkbox"> 😱 Scream when a player is tagged out</label>
       <label class="row">Sound volume
         <input id="set-sfxvol" type="range" min="0" max="1" step="0.05">
@@ -222,7 +223,7 @@
     <div id="toast"></div>
 
     <div id="hp"><div class="lbl">❤ SHIELD</div><div class="bar"><div id="hp-fill"></div></div><div id="hp-text">100</div></div>
-    <div id="ammo"><div class="lbl">⚡ AMMO</div><div id="ammo-num">12</div><div id="ammo-hint"></div><div id="streak"></div></div>
+    <div id="ammo"><div class="lbl" id="ammo-lbl">⚡ AMMO</div><div id="ammo-num">12</div><div id="ammo-hint"></div><div id="streak"></div></div>
   </div>
 
   <!-- ready -->

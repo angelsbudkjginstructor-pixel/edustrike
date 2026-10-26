@@ -33,7 +33,8 @@
       state: 'roam', path: null, pi: 0, scanT: rnd() * 0.2, target: null, sees: false, reactT: 0, fireT: rnd(),
       ammo: D.mag, ansT: 0, lostT: 0, lastSeen: null, strafeT: 0, strafeDir: 1,
       stuckT: 0, sx: 0, sz: 0, repathT: 0, alert: 0, phase: rnd() * 6, deathT: 0,
-      sinceHurt: 99, answering: false, lastShot: 0, lastSt: 0, ready: false, p: null
+      sinceHurt: 99, answering: false, lastShot: 0, lastSt: 0, ready: false, p: null,
+      wpn: null, wAmmo: 0, wUntil: 0, lastEarn: 0
     };
   }
 
@@ -103,7 +104,7 @@
 
   function kill(target, attacker, head) {
     target.alive = false; target.hp = 0; target.deaths++; target.respawnT = P.respawn;
-    target.target = null; target.path = null; target.state = 'roam'; target.answering = false;
+    target.target = null; target.path = null; target.state = 'roam'; target.answering = false; target.wpn = null;   // a bonus weapon is lost when tagged
     if (attacker) { attacker.kills++; M.score[attacker.team]++; }
     M.ev.push(['kill', attacker ? attacker.eid : -1, target.eid, head ? 1 : 0]);
     if (M.score[0] >= M.target || M.score[1] >= M.target) finish('score');
@@ -142,23 +143,73 @@
     e.yaw = yaw; e.answering = !!m.q;
   }
 
+  /* a student walks over a weapon crate, or earns one with 3 right answers: the referee decides which weapon and tells only that student */
+  function grantWeapon(e, id) {
+    const W = ES.WEAPONS[id]; if (!W || id === 'pistol' || !e || !e.p) return;
+    e.wpn = id; e.wAmmo = W.mag; e.wUntil = performance.now() + (W.secs + 2) * 1000;     // +2 s of patience for slow connections
+    ES.room.send(e.p, { t: 'wpn', w: id });
+  }
+  function randomWeapon(except) {
+    const list = ES.WEAPON_IDS.filter(function (w) { return w !== except; });
+    return list[Math.floor(rnd() * list.length)];
+  }
+  function onEarn(p) {
+    const e = p.ent; if (!M || M.phase !== 'play' || !e || !e.alive) return;
+    const now = performance.now();
+    if (now - e.lastEarn < 20000) return;             // at most one earned weapon every 20 seconds
+    e.lastEarn = now;
+    grantWeapon(e, randomWeapon(e.wpn));
+  }
+  /* weapon crates: walk over one to pick it up; it comes back 25 seconds later */
+  function updateCrates(dt) {
+    const R = ES.CRATE.radius;
+    M.crates.forEach(function (c) {
+      if (c.t > 0) { c.t -= dt; return; }
+      for (let i = 0; i < M.humans.length; i++) {
+        const e = M.humans[i];
+        if (!e.p || !e.alive) continue;
+        if (Math.hypot(e.x - c.x, e.z - c.z) < R && e.y < 1.6) { c.t = ES.CRATE.respawn; grantWeapon(e, randomWeapon(e.wpn)); return; }
+      }
+    });
+  }
+
   function onShot(p, m) {
     const e = p.ent; if (!M || M.phase !== 'play' || !e || !e.alive) return;
     const now = performance.now();
-    if (now - e.lastShot < 110) return;               // fire-rate limit (the real rate is 5 per second)
+    const wid = (typeof m.w === 'string' && m.w !== 'pistol' && ES.WEAPONS[m.w]) ? m.w : 'pistol', W = ES.WEAPONS[wid], bonus = wid !== 'pistol';
+    if (now - e.lastShot < (bonus ? W.interval * 600 : 110)) return;               // fire-rate limit (a little more relaxed than the real rate)
+    if (bonus) {                                      // you can only fire a bonus weapon you really have
+      if (e.wpn !== wid || e.wAmmo <= 0 || now > e.wUntil) return;
+      e.wAmmo--; if (e.wAmmo <= 0) e.wpn = null;
+    }
     e.lastShot = now;
     const ox = num(m.ox, 80), oy = num(m.oy, 10), oz = num(m.oz, 80), ex = num(m.ex, 200), ey = num(m.ey, 200), ez = num(m.ez, 200);
     if (ox === null || oy === null || oz === null || ex === null || ey === null || ez === null) return;
     if (Math.hypot(ox - e.x, oz - e.z) > 4) return;   // a shot must start near the shooter
-    M.ev.push(['shot', r2(ox), r2(oy), r2(oz), r2(ex), r2(ey), r2(ez), e.team, e.eid]);
-    const tid = m.tid | 0;
-    if (tid < 0) return;
-    const t = M.byEid[tid];
-    if (!t || !t.alive || t.team === e.team) return;
-    if (Math.hypot(t.x - e.x, t.z - e.z) > 100) return;
-    if (!world.clearLine(ox, oy, oz, t.x, t.y + 1.1, t.z)) return;      // a wall is in the way
-    const head = !!m.h;
-    G.damage(t, head ? P.headDamage : P.damage, e, head);
+    M.ev.push(['shot', r2(ox), r2(oy), r2(oz), r2(ex), r2(ey), r2(ez), e.team, e.eid, bonus ? wid : 0]);
+    // who was hit: the scatter blaster sends up to 8 pellets, every other weapon one bullet
+    let hits = [];
+    if (Array.isArray(m.hits)) hits = m.hits.slice(0, W.pellets).map(function (h) { return [Array.isArray(h) ? h[0] | 0 : -1, Array.isArray(h) ? h[1] : 0]; });
+    else hits = [[m.tid | 0, m.h]];
+    const direct = {};
+    hits.forEach(function (h) {
+      if (h[0] < 0) return;
+      const t = M.byEid[h[0]];
+      if (!t || !t.alive || t.team === e.team) return;
+      if (Math.hypot(t.x - e.x, t.z - e.z) > W.range + 10) return;
+      if (!world.clearLine(ox, oy, oz, t.x, t.y + 1.1, t.z)) return;      // a wall is in the way
+      const head = !!h[1];
+      direct[t.eid] = 1;
+      G.damage(t, head ? W.head : W.dmg, e, head);
+    });
+    if (W.splash && Math.hypot(ex - ox, ez - oz) <= W.range + 5) {          // rocket: the blast hurts everybody close to where it landed
+      M.ev.push(['boom', r2(ex), r2(ey), r2(ez), e.eid]);
+      M.ents.forEach(function (t) {
+        if (!t.alive || t.team === e.team || direct[t.eid]) return;
+        const d = Math.hypot(t.x - ex, (t.y + 1) - ey, t.z - ez);
+        if (d < W.splashR) G.damage(t, Math.max(10, W.splash * (1 - d / W.splashR)), e, false);
+      });
+    }
   }
 
   /* a student closed the page or quit the match: a bot takes their place */
@@ -178,7 +229,8 @@
     const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team' }, settings || {});
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
     M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
-          ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null };
+          ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
+          crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z, t: 0 }; }) };
     let eid = 1;
     const used = [[], []];
     const cnt = [0, 0];
@@ -235,7 +287,7 @@
       return [e.eid, r2(e.x), r2(e.y), r2(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)),
               (e.alive ? 1 : 0) | ((e.isBot ? e.state === 'answer' : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0), Math.round(e.speed * 10) / 10];
     });
-    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev };
+    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crates.reduce(function (a, c, i) { return c.t <= 0 ? a | (1 << i) : a; }, 0) };
     M.ev = [];
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, msg); });
   }
@@ -272,6 +324,7 @@
           }
         }
         separate();
+        updateCrates(dt);
         if (M.timeLeft <= 0) { M.timeLeft = 0; finish('time'); }
         const alive = M.humans.filter(function (e) { return e.p; }).length;
         if (!alive && M.phase === 'play') finish('empty');
@@ -300,6 +353,7 @@
   /* ---------- hooks into the class room ---------- */
   ES.room.on('st', onState);
   ES.room.on('shot', onShot);
+  ES.room.on('earn', onEarn);
   ES.room.on('ready', function (p) { if (p.ent) p.ent.ready = true; });
   ES.room.on('quit', function (p) { humanLeft(p); });
   ES.room.on('leave', function (p) { humanLeft(p); });

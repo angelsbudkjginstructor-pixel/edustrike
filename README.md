@@ -69,6 +69,9 @@ In a class match the teacher can choose **Graphics for everyone → Force Low** 
 The teacher picks the map in the class-match settings (solo players pick it in Match → Map).
 - **🌳 Classic Park** – the original open arena.
 - **🏙️ City Rooftops** – five buildings with stairs up to flat roofs, low walls on the roofs for cover. Bots stay on the ground; players fight from above.
+- **🏰 Castle** – a big stone keep in the middle (stairs from both sides), four towers with stairs, battlements on the roofs, stone walls with a gate.
+- **🌴 Jungle Ruins** – a stepped old temple in the middle (stairs up to a golden idol), mossy halls with stairs and roofs, thick trees.
+- **🚀 Space Station** – night sky with stars, dark metal decks, a reactor deck in the middle with stairs, glowing rails.
 Also new: **Player names → Show everyone's name** (teacher setting), a dramatic **scream** when a player is tagged out (Graphics & Controls → on/off).
 
 ## Your own sounds (Stage 4B)
@@ -77,3 +80,12 @@ To change a sound: upload a new file with the SAME name (for example `sfx-scream
 If a file is missing the game uses its built-in sound. Only use sounds you are allowed to share (this site is public).
 Music: `music-thriller.mp3` plays during matches (`ES.MUSIC_FILES` in config.js; delete the file to go back to the built-in music).
 Credits: pistol shot by MrFriends and Sci-Fi Thriller by Leberch (pixabay.com); screams by creativeheroes, thanvannispen (CC BY 3.0) and JohnsonBrandEditing (CC0); clicks by Michel Baradari, apollo-music.de (CC BY 3.0).
+
+
+## Bonus weapons, announcer and map music (Stage 4E)
+- **Bonus weapons**: walk over a glowing gold crate (6 on every map, comes back after 25 s) or answer **3 questions right in a row**. You get a random one:
+  ⚡ Rapid Blaster (fast, weak) · 💥 Scatter Blaster (shotgun, close range) · 🎯 Sniper Laser (one hit tags anyone) · 🚀 Rocket Blast (big explosion hurts everyone nearby).
+  Each has its own number of shots and time limit (about 25–30 s), its own sound and laser colour. You lose it when tagged. Numbers are in `js/config.js` → `ES.WEAPONS`.
+  In a class match the teacher's page decides who gets what and checks every shot, so nobody can cheat.
+- **Announcer**: a deep computer voice says "First blood!", "Double kill!", "One minute left!", "Victory!" (Graphics & Controls → Announcer voice). It uses the browser's own voice, no files.
+- **Music for each map**: every map plays the match song at a different speed/pitch. To give a map its own song, upload an mp3 and write it in `js/config.js` → `ES.MUSIC_FILES.byMap`, e.g. `space: 'music-space.mp3'`.

@@ -34,9 +34,11 @@
     });
   }
   /* the match music track (a recorded song). Played in a loop through the same volume + "muffle while answering" controls as the built-in music. */
-  let trackBuf = null, trackSrc = null, trackTried = false, trackOn = true;
+  let trackBuf = null, trackSrc = null, trackTried = false, trackOn = true, curMap = 'park', trackFile = '';
+  /* each map can have its own music file (ES.MUSIC_FILES.byMap) - if there is none, the normal match music plays at a different speed/pitch so the maps still feel different */
+  function mapTrackFile() { const mf = ES.MUSIC_FILES || {}; return (mf.byMap && mf.byMap[curMap]) || mf.play; }
   function loadTrack() {
-    const f = (ES.MUSIC_FILES || {}).play;
+    const f = mapTrackFile(); trackFile = f;
     if (!f || trackTried || !ctx || !trackOn) return;          // trackOn = false: weak computer, keep the light built-in music only
     trackTried = true;
     try {
@@ -49,6 +51,7 @@
   function startTrack() {
     stopTrack(0);
     trackSrc = ctx.createBufferSource(); trackSrc.buffer = trackBuf; trackSrc.loop = true;
+    const mf = ES.MUSIC_FILES || {}; trackSrc.playbackRate.value = (mf.byMap && mf.byMap[curMap]) ? 1 : ((mf.rate && mf.rate[curMap]) || 1);
     const g = ctx.createGain(); g.gain.value = (ES.MUSIC_FILES || {}).gain || 1;
     trackSrc.connect(g); g.connect(musicBus);
     trackSrc.start();
@@ -160,6 +163,46 @@
       tone('sawtooth', jit(950, 0.15), 240, 0.13, 0.10 * v, 0, p, { cut: 2500 });
       tone('sine', 110, 60, 0.08, 0.08 * v, 0, p);
     },
+    /* ---- bonus weapons: each one sounds different so you can hear what the enemy is using ---- */
+    // rapid blaster: a quick, high, buzzy "pit-pit"
+    w_rapid: function (v, p) {
+      tone('square', jit(2300, 0.08), 1100, 0.05, 0.11 * v, 0, p, { cut: 6000 });
+      tone('sine', 220, 110, 0.05, 0.12 * v, 0, p);
+      noise(0.02, 0.06 * v, 7000, 0, p, 'highpass');
+    },
+    // scatter blaster: a fat low "BOOM-shk" (noise burst + thump)
+    w_scatter: function (v, p) {
+      noise(0.22, 0.34 * v, 1800, 0, p);
+      tone('sine', 150, 38, 0.24, 0.34 * v, 0, p);
+      tone('sawtooth', 420, 70, 0.14, 0.12 * v, 0, p, { cut: 1500 });
+      noise(0.1, 0.12 * v, 5000, 0.12, p, 'highpass');
+    },
+    // sniper laser: a long clean "ZZZIIING" that falls away, with a crack
+    w_sniper: function (v, p) {
+      tone('sawtooth', 3600, 160, 0.5, 0.14 * v, 0, p, { cut: 6000 });
+      tone('sine', 1200, 90, 0.45, 0.16 * v, 0, p);
+      noise(0.05, 0.22 * v, 7000, 0, p, 'highpass');
+      tone('sine', 90, 40, 0.2, 0.28 * v, 0, p);
+    },
+    // rocket launch: a whoosh that rises, then fades
+    w_rocket: function (v, p) {
+      noise(0.55, 0.26 * v, 900, 0, p);
+      tone('sawtooth', 120, 420, 0.45, 0.12 * v, 0, p, { cut: 1400 });
+      tone('sine', 90, 50, 0.2, 0.25 * v, 0, p);
+    },
+    // rocket explosion: a deep boom with a rumble
+    boom: function (v, p) {
+      noise(0.7, 0.42 * v, 700, 0, p);
+      tone('sine', 110, 28, 0.6, 0.45 * v, 0, p);
+      tone('sawtooth', 200, 40, 0.4, 0.14 * v, 0, p, { cut: 700 });
+    },
+    // picking up a weapon: a bright "power-up" sweep
+    pickup: function () {
+      tone('triangle', 400, 1600, 0.2, 0.17);
+      [660, 880, 1320].forEach(function (f, i) { tone('square', f, f, 0.09, 0.07, 0.1 + i * 0.07); });
+    },
+    // the bonus weapon ran out
+    wpnEnd: function () { tone('triangle', 700, 260, 0.25, 0.14); tone('sine', 300, 150, 0.2, 0.1, 0.1); },
     empty: function () { noise(0.03, 0.18, 4000, 0, 0, 'highpass'); tone('square', 320, 140, 0.14, 0.09); },
     warn: function () { tone('square', 880, 880, 0.07, 0.07); tone('square', 880, 880, 0.07, 0.07, 0.11); },
     hit: function () { tone('square', 2000, 1300, 0.05, 0.12); tone('sine', 3400, 3400, 0.04, 0.06, 0.01); },
@@ -252,7 +295,10 @@
 
   const M = { mode: 'play', running: false, timer: 0, nextT: 0, step: 0, bar: 0, intensity: 0.4, target: 0.4, muffled: false, paused: false, steps: 0 };
 
-  function bpm() { return M.mode === 'menu' ? 96 : 118 + M.intensity * 34; }
+  /* the built-in music changes key and speed on each map (used when the recorded track is off or missing) */
+  const MAPMUS = { park: { tr: 0, bpm: 0 }, rooftops: { tr: 2, bpm: 8 }, castle: { tr: -2, bpm: -8 }, jungle: { tr: 3, bpm: -4 }, space: { tr: 5, bpm: 10 } };
+  function mapMus() { return MAPMUS[curMap] || MAPMUS.park; }
+  function bpm() { return M.mode === 'menu' ? 96 : 118 + M.intensity * 34 + mapMus().bpm; }
 
   function mNote(type, f, t, dur, vol, cut, atk, det) {
     const o = ctx.createOscillator(), g = ctx.createGain();
@@ -285,7 +331,7 @@
   }
 
   function playStep(t, s, b) {
-    const I = M.intensity, sd = 60 / bpm() / 4, ch = CHORDS[b % 8], iv = ch.m ? [0, 3, 7] : [0, 4, 7];
+    const I = M.intensity, sd = 60 / bpm() / 4, ch0 = CHORDS[b % 8], tr = M.mode === 'menu' ? 0 : mapMus().tr, ch = { r: ch0.r + tr, m: ch0.m }, iv = ch.m ? [0, 3, 7] : [0, 4, 7];
 
     /* calm theme for the "Ready?" screen: just pad + soft arpeggio */
     if (M.mode === 'menu') {
@@ -328,7 +374,7 @@
     if (I >= 0.35) {
       LEAD[b % 8].forEach(function (n) {
         if (n[0] !== s) return;
-        const f = mtof(n[1]), len = sd * n[2] * 0.95, v = (b % 8 >= 4 ? 0.075 : 0.06);
+        const f = mtof(n[1] + tr), len = sd * n[2] * 0.95, v = (b % 8 >= 4 ? 0.075 : 0.06);
         mNote('sawtooth', f, t, len, v, 3800, 0.012, -7);
         mNote('sawtooth', f, t, len, v, 3800, 0.012, 7);
         mNote('square', f * 2, t, len * 0.7, v * 0.25, 4500, 0.012, 0);
@@ -353,6 +399,10 @@
 
   function fadeTo(v, tc) { if (musicBus) musicBus.gain.setTargetAtTime(v, ctx.currentTime, tc || 0.2); }
   function level() { return (musicOn ? musicVol : 0) * 0.55 * (M.muffled ? 0.55 : 1); }
+
+  /* what the announcer says */
+  const ANN = { go: 'Fight!', first: 'First blood!', k2: 'Double kill!', k3: 'Triple kill!', k4: 'Rampage!', min1: 'One minute left!', last: 'Ten seconds!', win: 'Victory! Your team wins!', lose: 'Defeat. Better luck next time!', draw: 'It is a draw!', streak: 'Unstoppable!' };
+  let announceOn = true, annLast = 0;
 
   const music = {
     /* mode: 'menu' (calm) or 'play' (epic) */
@@ -394,6 +444,28 @@
   ES.audio = {
     unlock: function () { ensure(); },
     music: music,
+    /* The announcer: a deep computer voice from the browser itself (no sound files needed). */
+    setAnnouncer: function (on) { announceOn = !!on; if (!on) { try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ } } },
+    announce: function (key, text) {
+      try {
+        const txt = text || ANN[key];
+        if (!announceOn || !sfxOn || !txt || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+        const now = performance.now();
+        if (now - annLast < 1300 && key !== 'win' && key !== 'lose') return;      // never talk over yourself
+        annLast = now;
+        const u = new SpeechSynthesisUtterance(txt);
+        u.pitch = 0.55; u.rate = 0.92; u.volume = Math.min(1, 0.55 + sfxVol * 0.5);
+        const vs = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+        const v = vs.filter(function (x) { return /^en/i.test(x.lang); })[0]; if (v) u.voice = v;
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      } catch (e) { /* the announcer is optional */ }
+    },
+    /* tell the music which map is being played (call before music.start) */
+    setMap: function (id) {
+      if (id === curMap) return;
+      curMap = id || 'park';
+      if (mapTrackFile() !== trackFile) { trackBuf = null; trackTried = false; if (ctx && trackOn) loadTrack(); }
+    },
     setEnabled: function (on) { sfxOn = !!on; },                       // sound effects on/off
     setScream: function (on) { screamOn = !!on; },
     setTrackMusic: function (on) { trackOn = !!on; if (trackOn) loadTrack(); else { stopTrack(0); trackBuf = null; trackTried = false; } },   // recorded match music on/off (off frees its memory)                      // the tagged-out scream on/off

@@ -91,6 +91,8 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 #ammo-num { font-size: 64px; font-weight: 900; line-height: 1; color: #ffe14d; }
 #ammo.low #ammo-num { color: #ffa23a; }
 #ammo.empty #ammo-num { color: #ff4a3a; animation: pulse .6s infinite alternate; }
+#ammo.bonus #ammo-num { color: #7dffb0; text-shadow: 0 0 14px rgba(125,255,176,.7); }
+#ammo.bonus #ammo-hint { background: rgba(20,110,60,.75); }
 #ammo-hint { font-size: 17px; font-weight: 800; background: rgba(10,20,40,.55); padding: 2px 10px; border-radius: 10px; display: inline-block; }
 #ammo.empty #ammo-hint { background: #ff4a3a; }
 #streak { font-size: 16px; font-weight: 800; color: #ffd23f; min-height: 20px; }

@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 4C - pistol + music';
+  ES.VERSION = 'Stage 4E - jungle, space, bonus weapons, announcer';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -21,7 +21,13 @@
     botShoot:  { files: ['sfx-pistol.mp3'], gain: 0.5, rate: 0.12 }        // everybody else's pistol (softer, and quieter with distance)
   };
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
-  ES.MUSIC_FILES = { play: 'music-thriller.mp3', gain: 1.0 };
+  ES.MUSIC_FILES = {
+    play: 'music-thriller.mp3', gain: 1.0,
+    /* Want a different song for a map? Upload the mp3 and write its name here, for example:  space: 'music-space.mp3'
+       Maps with no file of their own play the normal song at a slightly different speed (see rate below). */
+    byMap: { },
+    rate: { rooftops: 1.06, castle: 0.92, jungle: 0.96, space: 1.1 }
+  };
 
   /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
      This is the Metered free-trial credential 'edustrike-game' that the teacher created.
@@ -70,6 +76,20 @@
   };
   ES.AMMO = { start: 12, max: 30 };
 
+  /* Bonus weapons. You get one by walking over a glowing crate, or by answering 3 questions right in a row.
+     dmg = damage per bullet, head = damage for a head shot, pellets = bullets per shot (the shotgun),
+     interval = seconds between shots, mag = how many shots it has, secs = how long you keep it,
+     splash/splashR = rocket blast damage and size, range = how far it shoots, color = the laser colour. */
+  ES.WEAPONS = {
+    pistol:  { name: 'Blaster',         icon: '🔫', dmg: 25,  head: 50,  pellets: 1, spread: 0,    interval: 0.2,  range: 90 },
+    rapid:   { name: 'Rapid Blaster',   icon: '⚡', dmg: 11,  head: 18,  pellets: 1, spread: 0.02, interval: 0.075, range: 70,  mag: 70, secs: 25, color: 0xffe14a },
+    scatter: { name: 'Scatter Blaster', icon: '💥', dmg: 13,  head: 16,  pellets: 8, spread: 0.075, interval: 0.75, range: 32,  mag: 12, secs: 30, color: 0xff9a3c },
+    sniper:  { name: 'Sniper Laser',    icon: '🎯', dmg: 100, head: 100, pellets: 1, spread: 0,    interval: 1.0,  range: 160, mag: 6,  secs: 30, color: 0x7dffb0 },
+    rocket:  { name: 'Rocket Blast',    icon: '🚀', dmg: 70,  head: 70,  pellets: 1, spread: 0,    interval: 1.3,  range: 90,  mag: 5,  secs: 30, color: 0xff5a3c, splash: 55, splashR: 4 }
+  };
+  ES.WEAPON_IDS = ['rapid', 'scatter', 'sniper', 'rocket'];
+  ES.CRATE = { respawn: 25, radius: 1.3 };   // a weapon crate comes back 25 seconds after someone takes it
+
   /* Enemy bot skill levels. Friendly bots always use "normal". */
   ES.DIFF = {
     easy:   { label: 'Easy',   speed: 3.0, react: 1.0,  aim: 0.13,  dmg: 5,  interval: 0.9,  range: 24, fov: 2.0, turn: 2.6, mag: 10, ansTime: 6.5, ansAcc: 0.55 },
@@ -96,7 +116,7 @@
     answerMode: 'slow', // 'slow' = world slows down while answering, 'live' = no slow-down
     gfx: 'low', showFps: true, aimAssist: true, radar: true,
     sens: 1, fov: 75, sound: true, lookMode: 'lock', // 'lock' = pointer lock, 'keys' = arrow keys + right-drag
-    music: true, musicVol: 0.6, sfxVol: 0.8, scream: true, trackMusic: true,
+    music: true, musicVol: 0.6, sfxVol: 0.8, scream: true, trackMusic: true, announcer: true,
     map: 'park'
   };
 
