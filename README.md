@@ -83,9 +83,11 @@ Credits: pistol shot by MrFriends and Sci-Fi Thriller by Leberch (pixabay.com); 
 
 
 ## Bonus weapons, announcer and map music (Stage 4E)
-- **Bonus weapons**: walk over a glowing gold crate (6 on every map, comes back after 25 s) or answer **3 questions right in a row**. You get a random one:
+- **Bonus weapons**: walk over a glowing gold crate (they are RARE: a pair appears about 40 s after the start, stays ~28 s, then the next pair comes about a minute later - numbers in `ES.CRATE`) or answer **3 questions right in a row**. You get a random one:
   ⚡ Rapid Blaster (fast, weak) · 💥 Scatter Blaster (shotgun, close range) · 🎯 Sniper Laser (one hit tags anyone) · 🚀 Rocket Blast (big explosion hurts everyone nearby).
   Each has its own number of shots and time limit (about 25–30 s), its own sound and laser colour. You lose it when tagged. Numbers are in `js/config.js` → `ES.WEAPONS`.
   In a class match the teacher's page decides who gets what and checks every shot, so nobody can cheat.
 - **Announcer**: a deep computer voice says "First blood!", "Double kill!", "One minute left!", "Victory!" (Graphics & Controls → Announcer voice). It uses the browser's own voice, no files.
 - **Music for each map**: every map plays the match song at a different speed/pitch. To give a map its own song, upload an mp3 and write it in `js/config.js` → `ES.MUSIC_FILES.byMap`, e.g. `space: 'music-space.mp3'`.
+
+Stage 4F: weapon sounds (`sfx-rapid/scatter/sniper/rocket/pickup.mp3`, 1-16 KB each) and songs for City Rooftops, Jungle Ruins and Space Station (`music-rooftops/jungle/space.mp3`, ~180 KB each, 30 s seamless loops) were supplied by the teacher and shrunk for the game. Castle uses the thriller song a little slower. Check the licence of every file you add (this site is public).

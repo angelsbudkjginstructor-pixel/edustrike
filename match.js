@@ -160,15 +160,17 @@
     e.lastEarn = now;
     grantWeapon(e, randomWeapon(e.wpn));
   }
-  /* weapon crates: walk over one to pick it up; it comes back 25 seconds later */
+  /* weapon crates are rare: a pair appears for ~28 s now and then (see ES.crateClock). Walk over one to pick it up. */
   function updateCrates(dt) {
-    const R = ES.CRATE.radius;
-    M.crates.forEach(function (c) {
-      if (c.t > 0) { c.t -= dt; return; }
-      for (let i = 0; i < M.humans.length; i++) {
-        const e = M.humans[i];
+    const R = ES.CRATE.radius, ck = M.crateClock;
+    ck.update(dt);
+    if (!ck.mask) return;
+    M.crates.forEach(function (c, i) {
+      if (!(ck.mask & (1 << i))) return;
+      for (let k = 0; k < M.humans.length; k++) {
+        const e = M.humans[k];
         if (!e.p || !e.alive) continue;
-        if (Math.hypot(e.x - c.x, e.z - c.z) < R && e.y < 1.6) { c.t = ES.CRATE.respawn; grantWeapon(e, randomWeapon(e.wpn)); return; }
+        if (Math.hypot(e.x - c.x, e.z - c.z) < R && e.y < 1.6) { ck.take(i); grantWeapon(e, randomWeapon(e.wpn)); return; }
       }
     });
   }
@@ -230,7 +232,8 @@
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
     M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
-          crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z, t: 0 }; }) };
+          crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
+    M.crateClock = ES.crateClock(M.crates.length);
     let eid = 1;
     const used = [[], []];
     const cnt = [0, 0];
@@ -287,7 +290,7 @@
       return [e.eid, r2(e.x), r2(e.y), r2(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)),
               (e.alive ? 1 : 0) | ((e.isBot ? e.state === 'answer' : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0), Math.round(e.speed * 10) / 10];
     });
-    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crates.reduce(function (a, c, i) { return c.t <= 0 ? a | (1 << i) : a; }, 0) };
+    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask };
     M.ev = [];
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, msg); });
   }

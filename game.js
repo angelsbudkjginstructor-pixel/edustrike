@@ -133,7 +133,7 @@
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
       total: (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
-      weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0x7fffffff,
+      weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
@@ -611,12 +611,20 @@
   function updateCrates(dt) {
     if (!crates.length) return;
     crateClock += dt;
+    let mask;
+    if (NET) mask = S.crMask;                              // the teacher's page decides which crates are out
+    else {
+      if (!S.crClock) S.crClock = ES.crateClock(crates.length);
+      if (S.phase === 'play') S.crClock.update(dt);
+      mask = S.crClock.mask;
+    }
+    if (mask && !S.crSeen) { toast('🎁 Gold weapon crates appeared! Run to one!', 3); ES.audio.sfx('open'); }
+    S.crSeen = mask;
     for (let i = 0; i < crates.length; i++) {
       const c = crates[i];
-      if (NET) c.ready = !!(S.crMask & (1 << c.i));
-      else if (!c.ready) { c.t -= dt; if (c.t <= 0) c.ready = true; }
-      else if (S.phase === 'play' && player.alive && Math.hypot(player.x - c.x, player.z - c.z) < ES.CRATE.radius && player.y < 1.6) {
-        c.ready = false; c.t = ES.CRATE.respawn; giveWeapon(randomWeapon());
+      c.ready = !!(mask & (1 << i));
+      if (!NET && c.ready && S.phase === 'play' && player.alive && Math.hypot(player.x - c.x, player.z - c.z) < ES.CRATE.radius && player.y < 1.6) {
+        S.crClock.take(i); c.ready = false; giveWeapon(randomWeapon());
       }
       c.g.visible = c.ready;
       if (c.ready) { c.box.rotation.y = crateClock * 1.6; c.box.position.y = 1.0 + Math.sin(crateClock * 2.2 + i) * 0.13; }

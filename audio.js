@@ -34,17 +34,17 @@
     });
   }
   /* the match music track (a recorded song). Played in a loop through the same volume + "muffle while answering" controls as the built-in music. */
-  let trackBuf = null, trackSrc = null, trackTried = false, trackOn = true, curMap = 'park', trackFile = '';
+  let trackBuf = null, trackSrc = null, trackTried = false, trackOn = true, curMap = 'park', trackFile = '', wantTrack = false;   // wantTrack: only download the song once a match has chosen its map
   /* each map can have its own music file (ES.MUSIC_FILES.byMap) - if there is none, the normal match music plays at a different speed/pitch so the maps still feel different */
   function mapTrackFile() { const mf = ES.MUSIC_FILES || {}; return (mf.byMap && mf.byMap[curMap]) || mf.play; }
   function loadTrack() {
     const f = mapTrackFile(); trackFile = f;
-    if (!f || trackTried || !ctx || !trackOn) return;          // trackOn = false: weak computer, keep the light built-in music only
+    if (!f || trackTried || !ctx || !trackOn || !wantTrack) return;          // trackOn = false: weak computer, keep the light built-in music only
     trackTried = true;
     try {
       fetch(f).then(function (r) { return r.ok ? r.arrayBuffer() : null; })
         .then(function (ab) { return ab ? ctx.decodeAudioData(ab) : null; })
-        .then(function (buf) { if (buf) trackBuf = buf; })
+        .then(function (buf) { if (buf) { trackBuf = buf; if (M.running && M.mode === 'play' && trackOn && !trackSrc && f === trackFile) { try { startTrack(); } catch (e) { /* ignore */ } } } })   // arrived after the match began: start it now
         .catch(function () { /* no file: built-in music is used */ });
     } catch (e) { /* ignore */ }
   }
@@ -462,9 +462,9 @@
     },
     /* tell the music which map is being played (call before music.start) */
     setMap: function (id) {
-      if (id === curMap) return;
-      curMap = id || 'park';
-      if (mapTrackFile() !== trackFile) { trackBuf = null; trackTried = false; if (ctx && trackOn) loadTrack(); }
+      curMap = id || 'park'; wantTrack = true;
+      if (mapTrackFile() !== trackFile) { trackBuf = null; trackTried = false; }
+      loadTrack();
     },
     setEnabled: function (on) { sfxOn = !!on; },                       // sound effects on/off
     setScream: function (on) { screamOn = !!on; },

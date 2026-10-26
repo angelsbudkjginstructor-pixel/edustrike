@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 4E - jungle, space, bonus weapons, announcer';
+  ES.VERSION = 'Stage 4F - weapon sounds, map songs, rare crates';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -18,15 +18,21 @@
     empty:  { files: ['sfx-empty.mp3'], gain: 0.9, rate: 0.05 },
     kill:   { files: ['sfx-blow.mp3'], gain: 0.55, layer: true },
     shoot:     { files: ['sfx-pistol.mp3'], gain: 0.85, rate: 0.06 },      // your pistol
-    botShoot:  { files: ['sfx-pistol.mp3'], gain: 0.5, rate: 0.12 }        // everybody else's pistol (softer, and quieter with distance)
+    botShoot:  { files: ['sfx-pistol.mp3'], gain: 0.5, rate: 0.12 },       // everybody else's pistol (softer, and quieter with distance)
+    // bonus weapons (each one its own sound; delete a file to go back to the built-in sound)
+    w_rapid:   { files: ['sfx-rapid.mp3'],   gain: 0.8, rate: 0.12 },
+    w_scatter: { files: ['sfx-scatter.mp3'], gain: 1.4, rate: 0.05 },
+    w_sniper:  { files: ['sfx-sniper.mp3'],  gain: 0.9, rate: 0.03 },
+    w_rocket:  { files: ['sfx-rocket.mp3'],  gain: 0.9, rate: 0.03 },
+    pickup:    { files: ['sfx-pickup.mp3'],  gain: 0.8 }
   };
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
   ES.MUSIC_FILES = {
     play: 'music-thriller.mp3', gain: 1.0,
     /* Want a different song for a map? Upload the mp3 and write its name here, for example:  space: 'music-space.mp3'
        Maps with no file of their own play the normal song at a slightly different speed (see rate below). */
-    byMap: { },
-    rate: { rooftops: 1.06, castle: 0.92, jungle: 0.96, space: 1.1 }
+    byMap: { rooftops: 'music-rooftops.mp3', jungle: 'music-jungle.mp3', space: 'music-space.mp3' },
+    rate: { castle: 0.92 }          // castle has no song of its own yet: the normal song, a little slower
   };
 
   /* Relay (TURN) for students on a DIFFERENT network (e.g. at home). Leave servers empty to use only direct connections.
@@ -88,7 +94,28 @@
     rocket:  { name: 'Rocket Blast',    icon: '🚀', dmg: 70,  head: 70,  pellets: 1, spread: 0,    interval: 1.3,  range: 90,  mag: 5,  secs: 30, color: 0xff5a3c, splash: 55, splashR: 4 }
   };
   ES.WEAPON_IDS = ['rapid', 'scatter', 'sniper', 'rocket'];
-  ES.CRATE = { respawn: 25, radius: 1.3 };   // a weapon crate comes back 25 seconds after someone takes it
+  /* Weapon crates are RARE: a pair of gold crates (one near each team) appears, waits ~28 s, then vanishes
+     if nobody took it. The next pair comes about a minute later. first = seconds after GO for the first pair. */
+  ES.CRATE = { radius: 1.3, first: 40, every: 60, life: 28 };
+  /* The crate clock: used by the teacher's page (class match) and by solo play. n = number of crate spots (they come in pairs). */
+  ES.crateClock = function (n) {
+    const c = { n: n, t: ES.CRATE.first, life: 0, mask: 0, last: -1 };
+    c.update = function (dt) {
+      if (c.mask) {
+        c.life -= dt;
+        if (c.life <= 0) { c.mask = 0; c.t = ES.CRATE.every + Math.random() * 10; }
+      } else if (c.n >= 2) {
+        c.t -= dt;
+        if (c.t <= 0) {
+          const pairs = Math.floor(c.n / 2); let k = Math.floor(Math.random() * pairs);
+          if (pairs > 1 && k === c.last) k = (k + 1) % pairs;
+          c.last = k; c.mask = (1 << (2 * k)) | (1 << (2 * k + 1)); c.life = ES.CRATE.life;
+        }
+      }
+    };
+    c.take = function (i) { c.mask &= ~(1 << i); if (!c.mask) c.t = ES.CRATE.every + Math.random() * 10; };
+    return c;
+  };
 
   /* Enemy bot skill levels. Friendly bots always use "normal". */
   ES.DIFF = {
