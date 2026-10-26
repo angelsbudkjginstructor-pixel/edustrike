@@ -40,18 +40,18 @@
 
   /* ---------- match controls ---------- */
   const SETKEY = 'edustrike.teacher.match.v1';
-  let picked = null;        // subtopics ticked for the match: null = all, or { 'ma|Fractions': true, ... }
+  let off = {};             // subtopics the teacher UNticked: { 'ma|Fractions': true }. Everything else is ON, so new subtopics from the sheet are ON by default.
   function loadSettings() {
     try {
       const j = JSON.parse(localStorage.getItem(SETKEY) || '{}');
       ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
-      if (Array.isArray(j.topics)) { picked = {}; j.topics.forEach(function (k) { picked[String(k)] = true; }); }
+      if (Array.isArray(j.off)) { off = {}; j.off.forEach(function (k) { off[String(k)] = true; }); }
     } catch (e) { /* ignore */ }
   }
   function saveSettings() {
     try {
       const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { j[id] = $(id).value; });
-      j.topics = picked ? Object.keys(picked) : null;
+      j.off = Object.keys(off);
       localStorage.setItem(SETKEY, JSON.stringify(j));
     } catch (e) { /* ignore */ }
   }
@@ -60,8 +60,7 @@
   function allTopicKeys() { const out = []; ES.sheet.topics().forEach(function (s) { s.topics.forEach(function (t) { out.push(t.key); }); }); return out; }
   /* the ticked subtopics that still exist in the loaded questions (empty = no filter = everything) */
   function chosenTopics() {
-    if (!picked) return [];
-    const all = allTopicKeys(), keep = all.filter(function (k) { return picked[k]; });
+    const all = allTopicKeys(), keep = all.filter(function (k) { return !off[k]; });
     return keep.length === all.length ? [] : keep;
   }
   function renderQuestions() {
@@ -71,15 +70,13 @@
     st.skipped.slice(0, 8).forEach(function (t) { const d = document.createElement('div'); d.textContent = '⚠ ' + t; $('q-skip').appendChild(d); });
     if (st.skipped.length > 8) { const d = document.createElement('div'); d.textContent = '… and ' + (st.skipped.length - 8) + ' more rows skipped.'; $('q-skip').appendChild(d); }
     const groups = ES.sheet.topics(), panel = $('q-panel'), keys = allTopicKeys();
-    if (picked && !keys.some(function (k) { return picked[k]; })) picked = null;      // the saved choice no longer matches: back to all
+    if (keys.length && keys.every(function (k) { return off[k]; })) off = {};      // never leave zero subtopics
     panel.innerHTML = '';
     groups.forEach(function (g) {
       const h = document.createElement('div'); h.className = 'q-subj'; h.style.color = g.color; h.textContent = g.icon + ' ' + g.name;
       const all = document.createElement('small'); all.textContent = 'all'; const none = document.createElement('small'); none.textContent = 'none';
       const setSubj = function (on) {
-        if (!picked) { picked = {}; keys.forEach(function (k) { picked[k] = true; }); }
-        g.topics.forEach(function (t) { if (on) picked[t.key] = true; else delete picked[t.key]; });
-        if (!keys.some(function (k) { return picked[k]; })) g.topics.forEach(function (t) { picked[t.key] = true; });    // never leave zero subtopics
+        g.topics.forEach(function (t) { if (on) delete off[t.key]; else off[t.key] = true; });
         saveSettings(); renderQuestions();
       };
       all.addEventListener('click', function () { setSubj(true); }); none.addEventListener('click', function () { setSubj(false); });
@@ -87,11 +84,9 @@
       const row = document.createElement('div'); row.className = 'q-topics';
       g.topics.forEach(function (t) {
         const lab = document.createElement('label'); lab.className = 'q-topic'; lab.style.setProperty('--c', g.color);
-        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !picked || !!picked[t.key];
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !off[t.key];
         cb.addEventListener('change', function () {
-          if (!picked) { picked = {}; keys.forEach(function (k) { picked[k] = true; }); }
-          if (cb.checked) picked[t.key] = true; else delete picked[t.key];
-          if (!keys.some(function (k) { return picked[k]; })) { picked[t.key] = true; }      // never leave zero subtopics
+          if (cb.checked) delete off[t.key]; else off[t.key] = true;
           saveSettings(); renderQuestions();
         });
         lab.appendChild(cb); lab.appendChild(document.createTextNode(t.label + ' (' + t.count + ')')); row.appendChild(lab);
