@@ -40,12 +40,77 @@
 
   /* ---------- match controls ---------- */
   const SETKEY = 'edustrike.teacher.match.v1';
+  let picked = null;        // subtopics ticked for the match: null = all, or { 'ma|Fractions': true, ... }
   function loadSettings() {
-    try { const j = JSON.parse(localStorage.getItem(SETKEY) || '{}'); ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { if (j[id]) $(id).value = j[id]; }); } catch (e) { /* ignore */ }
+    try {
+      const j = JSON.parse(localStorage.getItem(SETKEY) || '{}');
+      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
+      if (Array.isArray(j.topics)) { picked = {}; j.topics.forEach(function (k) { picked[String(k)] = true; }); }
+    } catch (e) { /* ignore */ }
   }
   function saveSettings() {
-    try { const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { j[id] = $(id).value; }); localStorage.setItem(SETKEY, JSON.stringify(j)); } catch (e) { /* ignore */ }
+    try {
+      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names'].forEach(function (id) { j[id] = $(id).value; });
+      j.topics = picked ? Object.keys(picked) : null;
+      localStorage.setItem(SETKEY, JSON.stringify(j));
+    } catch (e) { /* ignore */ }
   }
+
+  /* ---------- questions: where they come from + which subtopics this match uses ---------- */
+  function allTopicKeys() { const out = []; ES.sheet.topics().forEach(function (s) { s.topics.forEach(function (t) { out.push(t.key); }); }); return out; }
+  /* the ticked subtopics that still exist in the loaded questions (empty = no filter = everything) */
+  function chosenTopics() {
+    if (!picked) return [];
+    const all = allTopicKeys(), keep = all.filter(function (k) { return picked[k]; });
+    return keep.length === all.length ? [] : keep;
+  }
+  function renderQuestions() {
+    const st = ES.sheet.status;
+    $('q-status').textContent = st.message || '';
+    $('q-skip').innerHTML = '';
+    st.skipped.slice(0, 8).forEach(function (t) { const d = document.createElement('div'); d.textContent = '⚠ ' + t; $('q-skip').appendChild(d); });
+    if (st.skipped.length > 8) { const d = document.createElement('div'); d.textContent = '… and ' + (st.skipped.length - 8) + ' more rows skipped.'; $('q-skip').appendChild(d); }
+    const groups = ES.sheet.topics(), panel = $('q-panel'), keys = allTopicKeys();
+    if (picked && !keys.some(function (k) { return picked[k]; })) picked = null;      // the saved choice no longer matches: back to all
+    panel.innerHTML = '';
+    groups.forEach(function (g) {
+      const h = document.createElement('div'); h.className = 'q-subj'; h.style.color = g.color; h.textContent = g.icon + ' ' + g.name;
+      const all = document.createElement('small'); all.textContent = 'all'; const none = document.createElement('small'); none.textContent = 'none';
+      const setSubj = function (on) {
+        if (!picked) { picked = {}; keys.forEach(function (k) { picked[k] = true; }); }
+        g.topics.forEach(function (t) { if (on) picked[t.key] = true; else delete picked[t.key]; });
+        if (!keys.some(function (k) { return picked[k]; })) g.topics.forEach(function (t) { picked[t.key] = true; });    // never leave zero subtopics
+        saveSettings(); renderQuestions();
+      };
+      all.addEventListener('click', function () { setSubj(true); }); none.addEventListener('click', function () { setSubj(false); });
+      h.appendChild(all); h.appendChild(none); panel.appendChild(h);
+      const row = document.createElement('div'); row.className = 'q-topics';
+      g.topics.forEach(function (t) {
+        const lab = document.createElement('label'); lab.className = 'q-topic'; lab.style.setProperty('--c', g.color);
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !picked || !!picked[t.key];
+        cb.addEventListener('change', function () {
+          if (!picked) { picked = {}; keys.forEach(function (k) { picked[k] = true; }); }
+          if (cb.checked) picked[t.key] = true; else delete picked[t.key];
+          if (!keys.some(function (k) { return picked[k]; })) { picked[t.key] = true; }      // never leave zero subtopics
+          saveSettings(); renderQuestions();
+        });
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(t.label + ' (' + t.count + ')')); row.appendChild(lab);
+      });
+      panel.appendChild(row);
+    });
+    const ch = chosenTopics();
+    if (!ch.length) $('q-picked').textContent = 'All subtopics (' + ES.QUESTIONS.length + ' questions)';
+    else {
+      let n = 0; ES.sheet.topics().forEach(function (g) { g.topics.forEach(function (t) { if (ch.indexOf(t.key) >= 0) n += t.count; }); });
+      $('q-picked').textContent = ch.length + ' subtopic' + (ch.length > 1 ? 's' : '') + ' chosen (' + n + ' questions)';
+    }
+  }
+  $('q-toggle').addEventListener('click', function () {
+    const open = $('q-panel').classList.toggle('hidden');
+    $('q-toggle').textContent = open ? 'Choose subtopics ▾' : 'Hide subtopics ▴';
+  });
+  $('q-reload').addEventListener('click', function () { $('q-status').textContent = 'Reading your Google Sheet…'; ES.sheet.load(); });
+  ES.sheet.onChange(renderQuestions);
   function mmss(t) { t = Math.max(0, Math.ceil(t)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
 
   function renderLive(i) {
@@ -78,7 +143,7 @@
   $('r-start').addEventListener('click', function () {
     saveSettings();
     $('r-start-err').textContent = '';
-    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value });
+    const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value, topics: chosenTopics() });
     if (!r.ok) { $('r-start-err').textContent = r.error; return; }
     showMatchUi(true); renderLive(ES.match.info());
   });
@@ -86,7 +151,7 @@
   $('r-back').addEventListener('click', function () { ES.match.toLobby(); showMatchUi(false); });
   // fill the map list (from world.js), then restore the teacher's last choices
   $('m-map').innerHTML = ES.MAPS_LIST.map(function (m) { return '<option value="' + m.id + '">' + m.name + ' - ' + m.desc + '</option>'; }).join('');
-  loadSettings();
+  loadSettings(); renderQuestions();
 
   function setOpenUi(on) { $('r-closed').classList.toggle('hidden', on); $('r-opened').classList.toggle('hidden', !on); }
 

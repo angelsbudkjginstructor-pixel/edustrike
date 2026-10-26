@@ -47,6 +47,17 @@
   .r-say { display: flex; gap: 8px; margin-top: 12px; }
   .r-say input { flex: 1; }
   .r-h { margin: 18px 0 8px; font-size: 19px; }
+  .q-box { background: #f4f8ff; border: 2px solid #d3e0f7; border-radius: 12px; padding: 10px 12px; margin-top: 12px; }
+  .q-status { font-size: 14px; font-weight: 700; color: #234; }
+  .q-skip { font-size: 12px; font-weight: 600; color: #b3541e; margin-top: 4px; max-height: 84px; overflow: auto; }
+  .q-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .q-row .btn { padding: 8px 12px; font-size: 14px; }
+  #q-panel { margin-top: 8px; max-height: 280px; overflow: auto; border-top: 2px dashed #c9d7ee; padding-top: 6px; }
+  .q-subj { margin: 8px 0 2px; font-weight: 800; font-size: 15px; }
+  .q-subj small { font-weight: 600; opacity: .7; cursor: pointer; margin-left: 8px; text-decoration: underline; }
+  .q-topics { display: flex; flex-wrap: wrap; gap: 6px; }
+  .q-topic { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; border: 2px solid var(--c, #99a); border-radius: 999px; padding: 4px 10px; background: #fff; cursor: pointer; user-select: none; }
+  .q-topic input { margin: 0; accent-color: var(--c, #4a6); }
   .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
   .r-grid label { margin: 8px 0 0; font-size: 14px; }
   .r-grid select { width: 100%; margin-top: 4px; font: inherit; font-size: 17px; padding: 8px 10px; border-radius: 10px; border: 2px solid #c9d7ee; background: #f7faff; color: #12203a; }
@@ -116,7 +127,18 @@
           <label>Graphics for everyone<select id="m-gfx"><option value="" selected>Each student chooses</option><option value="low">Force Low (smoothest)</option></select></label>
           <label>Bot skill<select id="m-diff"><option value="easy">😀 Easy</option><option value="normal" selected>😎 Normal</option><option value="hard">🔥 Hard</option></select></label>
         </div>
-        <button id="r-start" class="btn on t-open" type="button">▶ START MATCH</button>
+        <h3 class="r-h">🧠 Questions</h3>
+        <div class="q-box">
+          <div id="q-status" class="q-status">Loading questions…</div>
+          <div id="q-skip" class="q-skip"></div>
+          <div class="q-row">
+            <span id="q-picked" style="font-weight:800">All subtopics</span>
+            <button id="q-toggle" class="btn dark" type="button">Choose subtopics ▾</button>
+            <button id="q-reload" class="btn dark" type="button">🔄 Reload from sheet</button>
+          </div>
+          <div id="q-panel" class="hidden"></div>
+        </div>
+        <button id="r-start" class="btn on t-open" type="button" style="margin-top:14px">▶ START MATCH</button>
         <div class="t-small" style="margin-top:8px">Empty spots in each team are filled with bots. Keep this page open during the match – it is the referee!</div>
         <div id="r-start-err" class="t-msg bad"></div>
       </div>
@@ -138,6 +160,8 @@
 
 <script src="three.min.js"></script>
 <script src="config.js"></script>
+<script src="questions.js"></script>
+<script src="sheet.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="gate.js"></script>
 <script src="net.js"></script>

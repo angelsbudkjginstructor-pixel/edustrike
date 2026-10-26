@@ -126,7 +126,7 @@
       });
     }
 
-    quiz = ES.createQuiz(st);
+    quiz = ES.createQuiz(st, NET ? opts.net.topics : null);
     G.world = world; G.ents = ents; G.player = player;   // the bot brains read these
 
     S = {

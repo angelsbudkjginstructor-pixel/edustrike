@@ -19,12 +19,21 @@
   /* Which questions match the settings? */
   ES.quizPool = function (s) {
     const lo = Math.min(s.gradeMin, s.gradeMax), hi = Math.max(s.gradeMin, s.gradeMax);
-    return ES.QUESTIONS.filter(function (q) { return s.subjects[q.s] && q.g >= lo && q.g <= hi; });
+    // q.g = 0 means "any grade". A subject that is not in the player's saved list yet (a new one from the sheet) counts as ON.
+    return ES.QUESTIONS.filter(function (q) { return s.subjects[q.s] !== false && (!q.g || (q.g >= lo && q.g <= hi)); });
   };
 
-  ES.createQuiz = function (settings) {
-    let list = ES.quizPool(settings);
-    let usedFallback = false;
+  /* topics = (class match) the subtopics the teacher ticked, like ['ma|Fractions', 'sc|Plants']. Empty / missing = no subtopic filter.
+     The player's own grade range still applies; if that leaves fewer than 4 questions we use the ticked subtopics at every grade. */
+  ES.createQuiz = function (settings, topics) {
+    let list, usedFallback = false;
+    if (topics && topics.length) {
+      const want = {}; topics.forEach(function (k) { want[k] = 1; });
+      const lo = Math.min(settings.gradeMin, settings.gradeMax), hi = Math.max(settings.gradeMin, settings.gradeMax);
+      const all = ES.QUESTIONS.filter(function (q) { return want[q.s + '|' + (q.t || 'General')]; });
+      list = all.filter(function (q) { return !q.g || (q.g >= lo && q.g <= hi); });
+      if (list.length < 4) list = all;
+    } else list = ES.quizPool(settings);
     if (list.length < 4) { list = ES.QUESTIONS.slice(); usedFallback = true; }
     let bag = [], last = null, pending = null;
 

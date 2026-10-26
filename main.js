@@ -33,7 +33,7 @@
     $('set-qtime').value = s.qTime; $('set-reward').value = s.reward; $('set-wrong').value = s.wrongAmmo; $('set-ansmode').value = s.answerMode;
     $('set-gfx').value = s.gfx; $('set-fps').checked = s.showFps; $('set-aim').checked = s.aimAssist; $('set-radar').checked = s.radar;
     $('set-sound').checked = s.sound; $('set-sens').value = s.sens; $('set-fov').value = s.fov; $('set-look').value = s.lookMode;
-    Array.prototype.forEach.call($('set-subjects').children, function (c) { c.classList.toggle('on', !!s.subjects[c.dataset.k]); });
+    Array.prototype.forEach.call($('set-subjects').children, function (c) { c.classList.toggle('on', s.subjects[c.dataset.k] !== false); });
     $('set-scream').checked = s.scream !== false; $('set-track').checked = s.trackMusic !== false; $('set-announcer').checked = s.announcer !== false;
     $('set-map').value = ES.MAPS_LIST.some(function (m) { return m.id === s.map; }) ? s.map : 'park';
     $('set-music').checked = s.music; $('set-musicvol').value = s.musicVol; $('set-sfxvol').value = s.sfxVol;
@@ -51,27 +51,30 @@
   /* ---------- build the static bits ---------- */
   function build() {
     $('ver').textContent = ES.VERSION;
-    const chips = $('set-subjects');
-    Object.keys(ES.SUBJECTS).forEach(function (k) {
-      const sub = ES.SUBJECTS[k], b = document.createElement('button');
-      b.type = 'button'; b.className = 'chip'; b.dataset.k = k;
-      b.style.setProperty('--c', sub.color);
-      b.textContent = sub.icon + ' ' + sub.name;
-      b.addEventListener('click', function () {
-        S().subjects[k] = !S().subjects[k];
-        // never allow zero subjects
-        if (!Object.keys(S().subjects).some(function (x) { return S().subjects[x]; })) S().subjects[k] = true;
-        save(); fillForm();
-      });
-      chips.appendChild(b);
-    });
+    buildChips();
     for (let g = 1; g <= 7; g++) {
       ['set-gmin', 'set-gmax'].forEach(function (id) {
         const o = document.createElement('option'); o.value = g; o.textContent = 'Grade ' + g; $(id).appendChild(o);
       });
     }
   }
-
+  /* the subject buttons (rebuilt when the Google Sheet adds a new subject) */
+  function buildChips() {
+    const chips = $('set-subjects'); chips.innerHTML = '';
+    Object.keys(ES.SUBJECTS).forEach(function (k) {
+      const sub = ES.SUBJECTS[k], b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.dataset.k = k;
+      b.style.setProperty('--c', sub.color);
+      b.textContent = sub.icon + ' ' + sub.name;
+      b.addEventListener('click', function () {
+        S().subjects[k] = !(S().subjects[k] !== false);
+        // never allow zero subjects
+        if (!Object.keys(ES.SUBJECTS).some(function (x) { return S().subjects[x] !== false; })) S().subjects[k] = true;
+        save(); fillForm();
+      });
+      chips.appendChild(b);
+    });
+  }
   function save() { ES.saveSettings(); }
 
   function bindForm() {
@@ -171,6 +174,8 @@
     // fill the map list (from world.js) before the form is filled
     $('set-map').innerHTML = ES.MAPS_LIST.map(function (m) { return '<option value="' + m.id + '">' + m.name + '</option>'; }).join('');
     build(); fillForm(); bindForm();
+    // when the Google Sheet finishes loading (or brings a new subject) refresh the subject buttons and the question count
+    if (ES.sheet) ES.sheet.onChange(function (st) { buildChips(); fillForm(); const el = $('sheet-info'); if (el) el.textContent = st.state === 'ok' || st.state === 'cached' || st.state === 'failed' ? st.message : ''; });
     $('btn-play').addEventListener('click', startGame);
     // class game: join screen + waiting room
     ES.lobby.init();

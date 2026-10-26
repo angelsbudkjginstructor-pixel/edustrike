@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 4F - weapon sounds, map songs, rare crates';
+  ES.VERSION = 'Stage 5A - questions from Google Sheet';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -47,6 +47,11 @@
       { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '99e10bd079397fc1652f6686', credential: 'JZy1Fn4amVsqe2Iq' }
     ]
   };
+
+  /* Your questions, from a Google Sheet.
+     Paste the "Publish to web" CSV link of your Questions sheet between the quotes (the setup steps are in README.md).
+     Leave it empty ('') to use only the built-in questions. */
+  ES.QUESTION_SHEET = { url: '', timeoutMs: 9000 };
 
   /* Teacher ON/OFF switch.
      Paste the Apps Script "Web app URL" between the quotes (see SETUP step).

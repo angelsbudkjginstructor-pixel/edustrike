@@ -91,3 +91,15 @@ Credits: pistol shot by MrFriends and Sci-Fi Thriller by Leberch (pixabay.com); 
 - **Music for each map**: every map plays the match song at a different speed/pitch. To give a map its own song, upload an mp3 and write it in `js/config.js` → `ES.MUSIC_FILES.byMap`, e.g. `space: 'music-space.mp3'`.
 
 Stage 4F: weapon sounds (`sfx-rapid/scatter/sniper/rocket/pickup.mp3`, 1-16 KB each) and songs for City Rooftops, Jungle Ruins and Space Station (`music-rooftops/jungle/space.mp3`, ~180 KB each, 30 s seamless loops) were supplied by the teacher and shrunk for the game. Castle uses the thriller song a little slower. Check the licence of every file you add (this site is public).
+
+## Stage 5A - questions from a Google Sheet
+
+Sheet: "EduStrike Questions" (in the instructor Google Drive). Columns, row 1 = headings:
+Subject, Subtopic, Grade, Difficulty, Question, A, B, C, D, Correct, Explanation
+
+- Correct = A, B, C or D. Grade blank = any grade. Subtopic blank = "General". Difficulty = Easy / Medium / Hard.
+- Any new Subject name (e.g. Sejarah, Social Studies) appears in the game automatically.
+- Each row needs a question and 4 different choices. Bad rows are skipped and listed on the teacher page.
+- Setup: File > Share > Publish to web > choose the Questions tab and "Comma-separated values (.csv)" > Publish > copy the link into `ES.QUESTION_SHEET.url` in `js/config.js`. Changes reach the game a few minutes after you edit the sheet.
+- If the sheet cannot be reached, the game uses the last saved copy, then the 50 built-in questions.
+- Teacher page > "Questions" box: tick the subtopics for the class match.

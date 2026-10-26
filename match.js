@@ -228,7 +228,9 @@
     stop();
     const humansP = ES.room.players().filter(function (p) { return p.conn; });
     if (!humansP.length) return { ok: false, error: 'No students are in the room yet.' };
-    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team' }, settings || {});
+    const s = Object.assign({ teamSize: 4, target: 15, minutes: 5, diff: 'normal', gfx: '', map: 'park', names: 'team', topics: [] }, settings || {});
+    // the subtopics the teacher ticked (an empty list = every question); keep only sane text, and not too many
+    s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
     M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
@@ -250,7 +252,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: s.minutes, gfx: s.gfx || '', map: world.map, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: s.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
