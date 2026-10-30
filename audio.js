@@ -407,7 +407,7 @@
   function level() { return (musicOn ? musicVol : 0) * 0.55 * (M.muffled ? 0.55 : 1); }
 
   /* what the announcer says */
-  const ANN = { go: 'Fight!', first: 'First blood!', k2: 'Double kill!', k3: 'Triple kill!', k4: 'Rampage!', min1: 'One minute left!', last: 'Ten seconds!', win: 'Victory! Your team wins!', lose: 'Defeat. Better luck next time!', draw: 'It is a draw!', streak: 'Unstoppable!', saved: 'We are saved!', planted: 'The bomb has been planted!', defused: 'The bomb has been defused!', rbwin: 'Round won!' };
+  const ANN = { go: 'Fight!', first: 'First blood!', k2: 'Double kill!', k3: 'Triple kill!', k4: 'Rampage!', min1: 'One minute left!', last: 'Ten seconds!', win: 'Victory! Your team wins!', lose: 'Defeat. Better luck next time!', draw: 'It is a draw!', streak: 'Unstoppable!', saved: 'We are saved!', planted: 'The bomb has been planted!', defused: 'The bomb has been defused!', rbwin: 'Round won!', captured: 'Flag captured!' };
   let announceOn = true, annLast = 0;
 
   const music = {

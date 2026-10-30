@@ -28,6 +28,7 @@
   let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
   let MFX = null, FXD = null;           // map effect: MFX = the floating particles (3D), FXD = the effect numbers for this map (ES.MAP_FX)
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
+  let CF = null, CFV = null;            // Capture the Flag: CF = the rules engine (ctf.js), CFV = the 3D flags (null in other modes)
   let RB = null, RBV = null;            // Rescue & Bomb mode: RB = the rules engine (rb.js), RBV = the 3D pieces (null in normal mode)
   const myTeam = function () { return NET ? NET.team : 0; };
   const r2 = function (v) { return Math.round(v * 100) / 100; };
@@ -95,7 +96,7 @@
       sun.shadow.mapSize.set(gfx.shadowSize || 1024, gfx.shadowSize || 1024); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.06;
       const c = sun.shadow.camera; c.left = -42; c.right = 42; c.top = 42; c.bottom = -42; c.near = 5; c.far = 120;
     }
-    scene.add(sun);
+    scene.add(sun); scene.add(sun.target);
     if (gfx.fx && !(SKY && SKY.stars)) {                          // Ultra: a soft glow around the sun, and a gentle dark edge on the screen
       const gc = document.createElement('canvas'); gc.width = gc.height = 128;
       const gx = gc.getContext('2d'), gg = gx.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -111,7 +112,8 @@
     camera = new T.PerspectiveCamera(st.fov, window.innerWidth / window.innerHeight, 0.05, gfx.far || 140);
     scene.add(camera);
 
-    world = ES.buildWorld(scene, { fancy: !!gfx.world, real: !!gfx.real, bump: !!gfx.bump, texSize: gfx.texSize || 1024, map: (opts && opts.net && opts.net.map) || st.map });
+    const ctfMode = NET ? opts.net.mode === 'ctf' : st.mode === 'ctf';
+    world = ES.buildWorld(scene, { ctf: ctfMode, fancy: !!gfx.world, real: !!gfx.real, bump: !!gfx.bump, texSize: gfx.texSize || 1024, map: (opts && opts.net && opts.net.map) || st.map });
     buildShared();
     buildGun();
     buildEffects();
@@ -146,7 +148,7 @@
     quiz = ES.createQuiz(st, NET ? opts.net.topics : null);
     G.world = world; G.ents = ents; G.player = player;   // the bot brains read these
     /* ---- Rescue & Bomb mode (solo menu choice, or the teacher's choice in a class match) ---- */
-    RB = null; RBV = null; G.rb = null;
+    RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null;
     const rbMode = NET ? (opts.net.mode === 'rb') : (st.mode === 'rb');
     if (rbMode && world.rbSpots) {
       const rc = ES.rbClean(NET ? opts.net.rounds : st.rbRounds, NET ? opts.net.rtime : st.rbMinutes);
@@ -155,9 +157,15 @@
       if (!NET) G.rb = RB.eng;                                                   // bots read the rules from here
     }
 
+    if (ctfMode && world.flagSpots) {                                           // Capture the Flag: flags, captures, a long arena
+      if (!NET) ents.forEach(function (e, i) { e.eid = i; });
+      CF = { eng: ES.createCTF({ spots: world.flagSpots, ents: function () { return ents; }, hook: NET ? null : ctfHook }) };
+      if (!NET) G.ctf = CF.eng;                                                  // bots read the rules from here
+    }
+
     S = {
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
-      total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: NET ? opts.net.target : st.targetKills,
+      total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: CF ? 9999 : (NET ? opts.net.target : st.targetKills),
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
@@ -173,6 +181,7 @@
     world.drawRadarBase(radarBase.getContext('2d'), 132);
     radarCtx = $('radar').getContext('2d');
     if (RB) buildRB();
+    if (CF) buildCF();
 
     addListeners();
     resetHudViews();
@@ -186,7 +195,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false; NET = null; RB = null; RBV = null; G.rb = null; MFX = null; FXD = null;
+    G.active = false; NET = null; RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null; MFX = null; FXD = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -613,7 +622,7 @@
     if (!target.isPlayer) G.soundAt('scream', target.x, target.z, 0.9);       // bots scream too (quieter when far away)
     if (attacker) {
       attacker.kills++;
-      if (RB) RB.eng.killed(attacker.team); else S.score[attacker.team]++;      // Rescue & Bomb: tags still count (they break a tie), but the score is rounds won
+      if (RB) RB.eng.killed(attacker.team); else if (!CF) S.score[attacker.team]++;      // Rescue & Bomb: tags still count (they break a tie), but the score is rounds won
       feed(attacker, target, head); announceKill(attacker);
     }
     if (target.isPlayer) {
@@ -625,7 +634,7 @@
       ES.audio.sfx('die'); ES.audio.sfx('scream', 1);
     }
     if (attacker && attacker.isPlayer) { S.stats.kills++; ES.audio.sfx('kill'); }
-    if (!RB && (S.score[0] >= S.target || S.score[1] >= S.target)) endMatch('score');
+    if (!RB && !CF && (S.score[0] >= S.target || S.score[1] >= S.target)) endMatch('score');
   }
 
   /* announcer: first blood, double / triple kill (your own tags within 5 seconds of each other) */
@@ -1041,7 +1050,7 @@
     keys[c] = true;
     if (S.phase !== 'play') return;
     if (c === 'KeyR') openQuestion('');
-    else if (c === 'KeyE' && RB) openMission();
+    else if (c === 'KeyE' && (RB || CF)) openMission();
     else if (c === 'KeyF') fireHeld = true;
     else if (c === 'Space' && player.alive && player.onGround) ES.audio.sfx('jump');
   }
@@ -1173,6 +1182,11 @@
     updateEffects(dt);
     updateMapFx(dt);
     if (RBV) updateRB(dt);
+    if (CFV) updateCF(dt);
+    if (world && world.ctf && sunLight && gfx.shadows && player) {          // the long arena is bigger than the shadow box: the shadow box follows you
+      const tx = Math.round(player.x / 4) * 4, tz = Math.round(player.z / 4) * 4;
+      sunLight.target.position.set(tx, 0, tz); sunLight.position.set(tx + 25, 45, tz + 15);
+    }
     if (world && world.update) world.update(dt);
     if (NET) { netTick(dt); return; }
 
@@ -1187,7 +1201,7 @@
       }
       if (S.countT <= 0) {
         S.phase = 'play'; show('ov-count', false); ES.audio.sfx('go'); ES.audio.announce('go');
-        if (RB) rbEffects('round', 1); else toast('GO! Press R to charge your blaster ⚡', 2.5);
+        if (RB) rbEffects('round', 1); else toast(CF ? 'GO! Grab the enemy flag 🚩 (E)  ·  R = ammo' : 'GO! Press R to charge your blaster ⚡', 2.5);
       }
       return;
     }
@@ -1197,6 +1211,7 @@
     if (S.fxT > 0 && FXD) { S.fxT -= dt; if (S.fxT <= 0) toast(FXD.text, 4.5); }
     const slow = S.qOpen && st.answerMode === 'slow';
     const wdt = slow ? dt * 0.15 : dt;
+    if (CF) { CF.eng.update(dt); S.score[0] = CF.eng.st.caps[0]; S.score[1] = CF.eng.st.caps[1]; }      // Capture the Flag: flags run in real time, score = captures
     if (RB) {                                          // Rescue & Bomb: the rules engine keeps the round clock + bomb (real time, so slow-motion answering cannot freeze the bomb)
       RB.eng.update(dt);
       const rs = RB.eng.st; S.score[0] = rs.wins[0]; S.score[1] = rs.wins[1]; S.timeLeft = rs.tLeft;
@@ -1451,13 +1466,15 @@
     $('toast').classList.remove('show'); $('feed').innerHTML = '';
     $('radar').classList.toggle('hidden', false);
     const ctrl = $('ready-look'); if (ctrl) ctrl.textContent = st.lookMode === 'lock' ? 'Mouse = look & aim  ·  Left click = fire' : 'Hold RIGHT mouse button (or arrow keys) to look  ·  Left click or F = fire';
-    setText('sc-target', RB ? 'Round 1 · first to ' + RB.eng.need : 'First to ' + S.target);
+    setText('sc-target', RB ? 'Round 1 · first to ' + RB.eng.need : (CF ? 'Most captures wins' : 'First to ' + S.target));
     const goal = $('ready-goal');
     if (goal) {
       if (RB) goal.textContent = myTeam() === 0 ? '🔵 Blue: free the 🆘 hostage and bring them to the blue zone, or defuse the 💣! Best of ' + RB.cfg.rounds + ' rounds.' : '🔴 Red: plant the 💣 at the site and keep it safe for 15 seconds! Best of ' + RB.cfg.rounds + ' rounds.';
+      else if (CF) goal.textContent = (myTeam() === 0 ? '🔵 Blue: ' : '🔴 Red: ') + 'grab the ' + (myTeam() === 0 ? 'RED' : 'BLUE') + ' 🚩 (press E next to it, answer a question) and carry it to YOUR base! Most captures wins.';
       else goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
     }
-    show('ready-rb', !!RB);
+    show('ready-rb', !!RB || !!CF);
+    const rr = $('ready-rb'); if (rr) rr.innerHTML = CF ? '<kbd>E</kbd> = <b>grab the enemy flag (answer a question next to it)</b>' : '<kbd>E</kbd> = <b>rescue / plant / defuse (answer a question next to the 🆘 or 💣)</b>';
     const fxl = $('ready-fx'); if (fxl) { fxl.textContent = FXD ? FXD.text : ''; show('ready-fx', !!FXD); }
     show('pause-net', !!NET);
     updateHud(0, true);
@@ -1469,6 +1486,7 @@
     const tl = Math.ceil(S.timeLeft), mm = Math.floor(tl / 60), ss = tl % 60;
     setText('sc-time', mm + ':' + (ss < 10 ? '0' : '') + ss);
     if (RB) updateRbHud();
+    if (CF) updateCfHud();
     setText('hp-text', String(Math.ceil(p.hp)));
     const hpEl = $('hp-fill'); hpEl.style.width = clamp(p.hp, 0, 100) + '%';
     hpEl.className = p.hp < 30 ? 'low' : '';
@@ -1522,18 +1540,19 @@
   }
 
   function drawRadar() {
-    const c = radarCtx, s = 132 / (world.half * 2);
+    const c = radarCtx, s = 132 / ((world.halfZ || world.half) * 2);      // the radar is square; the long Capture the Flag arena fits by its length
     c.drawImage(radarBase, 0, 0);
     if (RB) drawRbRadar(c, s);
+    if (CF) drawCfRadar(c, s);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (!e.alive || e.isPlayer) continue;
       if (e.team !== myTeam() && !st.radar) continue;
       c.fillStyle = e.team === myTeam() ? '#58a6ff' : '#ff6a45';
-      c.beginPath(); c.arc((e.x + world.half) * s, (e.z + world.half) * s, 3, 0, 7); c.fill();
+      c.beginPath(); c.arc(66 + e.x * s, 66 + e.z * s, 3, 0, 7); c.fill();
     }
     if (player.alive) {
-      const px = (player.x + world.half) * s, pz = (player.z + world.half) * s;
+      const px = 66 + player.x * s, pz = 66 + player.z * s;
       c.save(); c.translate(px, pz); c.rotate(-yaw);
       c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -7); c.lineTo(5, 5); c.lineTo(0, 2); c.lineTo(-5, 5); c.closePath(); c.fill();
       c.restore();
@@ -1566,7 +1585,8 @@
   const RB_TXT = {
     rescue: { ask: '🆘 Correct answer = the hostage is freed!', done: '🆘 Freeing the hostage…' },
     plant: { ask: '💣 Correct answer = the bomb is planted!', done: '💣 Planting the bomb…' },
-    defuse: { ask: '🔧 Correct answer = the bomb is defused!', done: '🔧 Defusing the bomb…' }
+    defuse: { ask: '🔧 Correct answer = the bomb is defused!', done: '🔧 Defusing the bomb…' },
+    grab: { ask: '🚩 Correct answer = you grab the flag!', done: '🚩 Grabbing the flag…' }
   };
   const RB_WHY = {
     saved: '🆘 The hostage is saved!', defuse: '🔧 The bomb was defused!', boom: '💥 BOOM! The bomb exploded!',
@@ -1676,8 +1696,9 @@
   }
   function openMission() {
     if (S.phase !== 'play' || S.paused || S.qOpen || !player.alive) return;
-    const k = rbContext();
+    const k = RB ? rbContext() : ctfContext();
     if (!k) {
+      if (CF) { toast('🚩 Go next to the ' + (myTeam() === 0 ? 'RED' : 'BLUE') + ' flag and press E', 2); return; }
       toast(myTeam() === 0 ? '🆘 Go next to the hostage (or the ticking 💣) and press E' : '💣 Go to the bomb site and press E to plant', 2);
       return;
     }
@@ -1685,11 +1706,11 @@
   }
   /* a right answer on a mission question: do it (solo: here, class: ask the referee) */
   function rbDo(kind) {
-    if (!RB) return;
+    if (!RB && !CF) return;
     if (NET) { netSend({ t: 'rb', a: kind }); return; }
-    if (!RB.eng.act(player, kind)) toast('Too late! 😬', 1.4);
+    if (!(RB || CF).eng.act(player, kind)) toast('Too late! 😬', 1.4);
   }
-  G.rbAct = function (b, kind) { return RB ? RB.eng.act(b, kind) : false; };       // bots do their mission through here
+  G.rbAct = function (b, kind) { return RB ? RB.eng.act(b, kind) : (CF ? CF.eng.act(b, kind) : false); };       // bots do their mission through here
 
   /* sounds, banners and effects for a Rescue & Bomb event (solo: called by the rules engine; class: sent by the referee) */
   function rbHook(name, a, b) {
@@ -1778,13 +1799,123 @@
     }
   }
   function drawRbRadar(c, s) {
-    const st = RB.eng.st, sp = world.rbSpots, h = world.half;
+    const st = RB.eng.st, sp = world.rbSpots;
     c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.fillStyle = 'rgba(88,166,255,.35)';
-    c.beginPath(); c.arc((sp.s.x + h) * s, (sp.s.z + h) * s, ES.RB.SAFE_R * s, 0, 7); c.fill(); c.stroke();
-    const bx = (sp.z.x + h) * s, bz = (sp.z.z + h) * s;
+    c.beginPath(); c.arc(66 + sp.s.x * s, 66 + sp.s.z * s, ES.RB.SAFE_R * s, 0, 7); c.fill(); c.stroke();
+    const bx = 66 + sp.z.x * s, bz = 66 + sp.z.z * s;
     c.fillStyle = st.b.s === 1 ? '#ff2a1a' : (st.b.s === 2 ? '#30e060' : '#ff9a3c');
     c.beginPath(); c.moveTo(bx, bz - 6); c.lineTo(bx + 6, bz); c.lineTo(bx, bz + 6); c.lineTo(bx - 6, bz); c.closePath(); c.fill();
-    if (st.h.s !== 3) { c.fillStyle = '#ffd23f'; c.strokeStyle = '#7a5a00'; c.lineWidth = 1.5; c.beginPath(); c.arc((st.h.x + h) * s, (st.h.z + h) * s, 4.5, 0, 7); c.fill(); c.stroke(); }
+    if (st.h.s !== 3) { c.fillStyle = '#ffd23f'; c.strokeStyle = '#7a5a00'; c.lineWidth = 1.5; c.beginPath(); c.arc(66 + st.h.x * s, 66 + st.h.z * s, 4.5, 0, 7); c.fill(); c.stroke(); }
+  }
+
+
+  /* =====================================================================
+     CAPTURE THE FLAG
+     The rules live in ctf.js. Here we draw the flags and the capture circles, play the sounds, show messages
+     and handle the E key. (Class match: the teacher's page is the referee and sends the flag state in every snapshot;
+     solo: this computer runs the rules.)
+     ===================================================================== */
+  function ctfHomeOf(team) { return team === 0 ? world.flagSpots.b : world.flagSpots.r; }
+  function buildCF() {
+    const sp = world.flagSpots, R = ES.CTF;
+    const V = CFV = { g: new T.Group(), flags: [], wave: 0 };
+    scene.add(V.g);
+    const mat = function (c, o) { return new T.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, side: T.DoubleSide, fog: false }); };
+    [0, 1].forEach(function (team) {
+      const home = team === 0 ? sp.b : sp.r, col = team === 0 ? 0x2f86ff : 0xff5a3c, gy = world.groundAt(home.x, home.z, 3) + 0.06;
+      // the capture circle round this team's flag (carry the ENEMY flag in here to score)
+      const ring = new T.Mesh(new T.RingGeometry(R.CAP_R - 0.3, R.CAP_R, 40), mat(col, 0.9)); ring.rotation.x = -Math.PI / 2; ring.position.set(home.x, gy, home.z);
+      const disc = new T.Mesh(new T.CircleGeometry(R.CAP_R, 32), mat(col, 0.14)); disc.rotation.x = -Math.PI / 2; disc.position.set(home.x, gy - 0.01, home.z);
+      V.g.add(ring, disc);
+      // the flag itself: a pole and a cloth (one small group that moves with whoever carries it)
+      const g = new T.Group();
+      const pole = new T.Mesh(new T.BoxGeometry(0.1, 2.6, 0.1), new T.MeshLambertMaterial({ color: 0xdddddd })); pole.position.y = 1.3; g.add(pole);
+      const cloth = new T.Mesh(new T.BoxGeometry(1.1, 0.7, 0.04), new T.MeshBasicMaterial({ color: col })); cloth.position.set(0.6, 2.25, 0); g.add(cloth);
+      const star = new T.Mesh(new T.BoxGeometry(0.34, 0.34, 0.05), new T.MeshBasicMaterial({ color: 0xffffff })); star.position.set(0.6, 2.25, 0.015); star.rotation.z = 0.78; g.add(star);
+      const beam = new T.Mesh(new T.CylinderGeometry(0.4, 0.4, 9, 8, 1, true), mat(col, 0.22)); beam.position.y = 4.5; g.add(beam);
+      const label = makeNameSprite(team === 0 ? '🔵 BLUE FLAG' : '🔴 RED FLAG', team === 0 ? '#2f86ff' : '#d9421f', true); label.scale.set(2.1, 0.52, 1); label.position.y = 3.5; g.add(label);
+      g.position.set(home.x, gy, home.z); V.g.add(g);
+      V.flags.push({ g: g, cloth: cloth, beam: beam, label: label, x: home.x, z: home.z, ring: ring, team: team });
+    });
+    G.ctfv = V;
+  }
+  /* every frame: put each flag where the rules say (home / on the carrier's back / dropped) and wave the cloth */
+  function updateCF(dt) {
+    const V = CFV, st = CF.eng.st;
+    V.wave += dt;
+    for (let team = 0; team < 2; team++) {
+      const f = st.f[team], v = V.flags[team];
+      let x = f.x, z = f.z, y = world.groundAt(f.x, f.z, 4), scale = 1;
+      if (f.s === 1) {
+        const car = eidEnt(f.c);
+        if (car) { x = car.x - Math.sin(car.yaw) * -0.35; z = car.z - Math.cos(car.yaw) * -0.35; y = (car.y || 0) + 0.55; }
+        scale = 0.62;                                              // smaller on a runner's back
+      }
+      const k = 1 - Math.exp(-dt * 14);
+      if (Math.hypot(x - v.x, z - v.z) > 6) { v.x = x; v.z = z; } else { v.x += (x - v.x) * k; v.z += (z - v.z) * k; }
+      v.g.position.set(v.x, y, v.z); v.g.scale.setScalar(scale);
+      v.cloth.rotation.y = Math.sin(V.wave * 5 + team) * 0.25;
+      v.beam.visible = f.s !== 1;
+      v.beam.material.opacity = f.s === 2 ? 0.3 + Math.abs(Math.sin(V.wave * 6)) * 0.3 : 0.22;
+      v.label.visible = f.s !== 1;
+    }
+  }
+  /* what the E key can do right now */
+  function ctfContext() {
+    if (!CF || !player.alive || S.phase !== 'play') return null;
+    const st = CF.eng.st, t = myTeam(), f = st.f[1 - t], h = ctfHomeOf(1 - t);
+    if (f.s === 0 && Math.hypot(player.x - h.x, player.z - h.z) <= ES.CTF.ACT_R - 0.9) return 'grab';
+    return null;
+  }
+  function ctfHook(name, a, b) { ctfEffects(name, a, b); }
+  function ctfEffects(name, a, b) {
+    if (!CF || !S) return;
+    const who = eidEnt(a), nm = who ? who.name : 'Someone', t = myTeam();
+    const mineFlag = function (flagTeam) { return flagTeam === t; };         // flagTeam = the owner of the flag
+    if (name === 'grab') {
+      toast(mineFlag(b) ? '🚩 ' + nm + ' STOLE YOUR FLAG! Tag them!' : '🚩 ' + nm + ' has the enemy flag! Protect them!', 3);
+      ES.audio.sfx(mineFlag(b) ? 'wrong' : 'rb_rescue');
+    } else if (name === 'drop') {
+      toast(mineFlag(b) ? '🚩 Your flag was dropped! It flies home in 10 s' : '🚩 The carrier was tagged! Pick up the flag again!', 2.8);
+    } else if (name === 'pickup') {
+      toast('🚩 ' + nm + ' picked the flag up again!', 2.4);
+    } else if (name === 'return') {
+      toast(a === t ? '🚩 Your flag flew back home' : '🚩 The enemy flag flew back home', 2.2);
+    } else if (name === 'capture') {
+      const mine = b === t;                                                   // b = the team that scored
+      toast((mine ? '🎉 ' : '😬 ') + nm + ' captured the flag!  Blue ' + CF.eng.st.caps[0] + ' – ' + CF.eng.st.caps[1] + ' Red', 4);
+      ES.audio.sfx(mine ? 'correct' : 'wrong'); if (mine) ES.audio.announce('captured');
+      const h = ctfHomeOf(b);
+      burst(h.x, 1.2, h.z, b === 0 ? 0x2f86ff : 0xff5a3c, 22); burst(h.x, 2, h.z, 0xffd23f, 18);
+    }
+  }
+  function updateCfHud() {
+    const st = CF.eng.st, t = myTeam(), me = player.eid, Fe = st.f[1 - t], Fm = st.f[t];
+    setText('sc-target', 'Most captures wins');
+    let msg = '', cls = '';
+    if (Fe.s === 1 && Fe.c === me) { msg = '🚩 YOU HAVE THE FLAG! Run to your base circle!'; cls = t === 0 ? 'blue' : 'bomb'; }
+    else if (Fm.s === 1) { msg = '🚩 Your flag was STOLEN! Tag the carrier!'; cls = 'bomb'; }
+    else if (Fe.s === 1) { msg = '🚩 A teammate has the flag – protect them!'; cls = t === 0 ? 'blue' : ''; }
+    else if (Fe.s === 2) { msg = '🚩 The flag was dropped! Walk to it and pick it up!'; }
+    else if (Fm.s === 2) { msg = '🚩 Your flag was dropped – it flies home in ' + Math.max(1, Math.ceil(Fm.t)) + ' s'; }
+    else msg = '🚩 Grab the ' + (t === 0 ? 'RED' : 'BLUE') + ' flag (E)  ·  bring it to YOUR base';
+    show('rb-bar', !!msg);
+    if (msg) { const bar = $('rb-bar'); if (bar.textContent !== msg) bar.textContent = msg; bar.className = cls; }
+    const k = ctfContext(), hint = $('rb-hint');
+    const show2 = !!k && !S.qOpen && !S.paused;
+    hint.classList.toggle('hidden', !show2);
+    if (show2 && hint.dataset.k !== k) { hint.dataset.k = k; hint.innerHTML = '<kbd>E</kbd>🚩 Grab the flag'; }
+  }
+  function drawCfRadar(c, s) {
+    const st = CF.eng.st;
+    [0, 1].forEach(function (team) {
+      const h = ctfHomeOf(team), f = st.f[team];
+      c.strokeStyle = team === 0 ? '#58a6ff' : '#ff6a45'; c.lineWidth = 2; c.fillStyle = team === 0 ? 'rgba(88,166,255,.3)' : 'rgba(255,106,69,.3)';
+      c.beginPath(); c.arc(66 + h.x * s, 66 + h.z * s, ES.CTF.CAP_R * s, 0, 7); c.fill(); c.stroke();
+      const fx = 66 + f.x * s, fz = 66 + f.z * s;                              // the flag: a small flag shape (yellow while it is away from home)
+      c.fillStyle = f.s === 0 ? (team === 0 ? '#58a6ff' : '#ff6a45') : '#ffd23f';
+      c.fillRect(fx - 1, fz - 7, 2, 9); c.fillRect(fx + 1, fz - 7, 6, 4);
+    });
   }
 
   /* =====================================================================
@@ -1843,7 +1974,7 @@
       if (n !== NET.cdLast) { NET.cdLast = n; if (n > 0) { $('count-num').textContent = n; ES.audio.sfx('count'); } }
     } else if (ph === 'play' && S.phase !== 'play') {
       S.phase = 'play'; show('ov-count', false);
-      if (RB) rbEffects('round', 1); else toast('GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
+      if (RB) rbEffects('round', 1); else toast(CF ? 'GO! Grab the enemy flag 🚩 (E)  ·  R = ammo' : 'GO! Press R to charge your blaster ⚡', 2.5); ES.audio.sfx('go'); ES.audio.announce('go');
     }
   }
 
@@ -1852,6 +1983,7 @@
     S.score = [m.sc[0], m.sc[1]];
     S.timeLeft = m.tl;
     if (typeof m.cr === 'number') S.crMask = m.cr;
+    if (CF && m.cf) CF.eng.apply(m.cf);
     if (RB && m.rb) RB.eng.apply(m.rb);                     // Rescue & Bomb: copy the referee's round state first, then react to the events
     netPhase(m.ph, m.cd);
     for (let i = 0; i < m.ev.length; i++) netEvent(m.ev[i]);
@@ -1894,6 +2026,8 @@
       if (a === player) { S.stats.kills++; ES.audio.sfx('kill'); }
     } else if (k === 'rb') {
       rbEffects(ev[1], ev[2], ev[3]);
+    } else if (k === 'cf') {
+      ctfEffects(ev[1], ev[2], ev[3]);
     } else if (k === 'hurt') {
       if (ev[1] !== NET.you) return;
       const a = NET.byEid[ev[2]];
@@ -1920,7 +2054,7 @@
     p.x = m.x; p.z = m.z; p.y = 0; p.vx = p.vz = p.vy = 0; yaw = m.yaw; pitch = 0;
     p.alive = true; p.hp = P.hp; p.protT = P.protect;
     if (S.weapon !== 'pistol') dropWeapon(true);              // a new round starts with the normal blaster
-    if (S.qOpen && RB) cancelQuestion(true);
+    if (S.qOpen && (RB || CF)) cancelQuestion(true);
     S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99;
     show('ov-death', false);
     ES.audio.sfx('respawn');
@@ -1966,7 +2100,7 @@
     getLook: function () { return { yaw: yaw, pitch: pitch }; },
     setFire: function (v) { fireHeld = v; },
     choose: chooseAnswer, closeQ: closeQuestion,
-    end: endMatch, get net() { return NET; }, get rb() { return RB; }, get rbv() { return RBV; }, rbDo: rbDo, openMission: openMission,
+    end: endMatch, get net() { return NET; }, get rb() { return RB; }, get rbv() { return RBV; }, get cf() { return CF; }, get cfv() { return CFV; }, ctfDo: rbDo, rbDo: rbDo, openMission: openMission,
     give: giveWeapon, shoot: playerShoot,
     step: function (n, dt) { for (let i = 0; i < n; i++) tick(dt); }   // run the game without drawing (used for fast automatic tests)
   };

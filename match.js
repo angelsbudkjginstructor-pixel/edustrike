@@ -58,7 +58,7 @@
 
   /* ---------- the "G" object the bot brains talk to ---------- */
   const G = {
-    rbAct: function (b, kind) { return M && M.rb ? M.rb.act(b, kind) : false; },     // a bot does its rescue / plant / defuse through the referee's rules
+    rbAct: function (b, kind) { const eng = M && (M.rb || M.ctf); return eng ? eng.act(b, kind) : false; },     // a bot does its rescue / plant / defuse through the referee's rules
     castShot: function (shooter, ox, oy, oz, dx, dy, dz, range, radiusMul) {
       let bt = world.rayWorld(ox, oy, oz, dx, dy, dz, range), best = null, head = false;
       const dxz2 = dx * dx + dz * dz;
@@ -106,9 +106,9 @@
   function kill(target, attacker, head) {
     target.alive = false; target.hp = 0; target.deaths++; target.respawnT = P.respawn;
     target.target = null; target.path = null; target.state = 'roam'; target.answering = false; target.wpn = null;   // a bonus weapon is lost when tagged
-    if (attacker) { attacker.kills++; if (M.rb) M.rb.killed(attacker.team); else M.score[attacker.team]++; }      // Rescue & Bomb: score = rounds won, tags only break ties
+    if (attacker) { attacker.kills++; if (M.rb) M.rb.killed(attacker.team); else if (!M.ctf) M.score[attacker.team]++; }      // Rescue & Bomb: score = rounds won, tags only break ties
     M.ev.push(['kill', attacker ? attacker.eid : -1, target.eid, head ? 1 : 0]);
-    if (!M.rb && (M.score[0] >= M.target || M.score[1] >= M.target)) finish('score');
+    if (!M.rb && !M.ctf && (M.score[0] >= M.target || M.score[1] >= M.target)) finish('score');
   }
 
   /* push fighters apart a little so they do not stand inside each other */
@@ -217,11 +217,16 @@
 
   /* Rescue & Bomb: a student answered a mission question right and asks to rescue / plant / defuse. The rules engine checks everything. */
   function onRb(p, m) {
-    const e = p.ent; if (!M || !M.rb || M.phase !== 'play' || !e || !e.alive) return;
-    if (['rescue', 'plant', 'defuse'].indexOf(m.a) < 0) return;
+    const eng = M && (M.rb || M.ctf), e = p.ent; if (!eng || M.phase !== 'play' || !e || !e.alive) return;
+    if ((M.rb ? ['rescue', 'plant', 'defuse'] : ['grab']).indexOf(m.a) < 0) return;
     const now = performance.now(); if (now - (e.lastRb || 0) < 800) return;          // not more than about one try a second
     e.lastRb = now;
-    M.rb.act(e, m.a);
+    eng.act(e, m.a);
+  }
+  /* Capture the Flag: the rules engine tells us what happened (grab, drop, capture...): pass it on to every student */
+  function cfHook(name, a, b) {
+    if (!M) return;
+    M.ev.push(['cf', name, a === undefined ? 0 : a, b === undefined ? 0 : b]);
   }
   /* the referee's rules engine tells us what happened: pass it on to every student (sounds, banners) */
   function rbHook(name, a, b) {
@@ -258,12 +263,15 @@
     const rbc = ES.rbClean(s.rounds, s.rtime);
     // the subtopics the teacher ticked (an empty list = every question); keep only sane text, and not too many
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
-    world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map });
+    world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map, ctf: s.mode === 'ctf' });
     M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
-    G.rb = null;
+    G.rb = null; G.ctf = null;
+    if (s.mode === 'ctf' && world.flagSpots) {                      // Capture the Flag: a long arena, a flag at each base
+      M.ctf = ES.createCTF({ spots: world.flagSpots, ents: function () { return M ? M.ents : []; }, hook: cfHook }); G.ctf = M.ctf;
+    }
     if (s.mode === 'rb' && world.rbSpots) {                         // Rescue & Bomb: rounds, a hostage and a bomb
       M.rb = ES.createRB({ rounds: rbc.rounds, minutes: rbc.minutes, spots: world.rbSpots, ents: function () { return M ? M.ents : []; }, hook: rbHook });
       M.timeLeft = rbc.minutes * 60; M.minutes = rbc.minutes; G.rb = M.rb;
@@ -284,7 +292,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : 'normal', rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal'), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
@@ -307,7 +315,7 @@
   function stop() {
     if (ticker) { ticker.stop(); ticker = null; }
     if (M) { M.humans.forEach(function (e) { if (e.p) e.p.ent = null; }); }
-    M = null; world = null; G.rb = null;
+    M = null; world = null; G.rb = null; G.ctf = null;
   }
 
   function finish(reason) {
@@ -330,7 +338,7 @@
       return [e.eid, r2(e.x), r2(e.y), r2(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)),
               (e.alive ? 1 : 0) | ((e.isBot ? (e.state === 'answer' || e.state === 'obj') : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0) | (weaponBits(e) << 3), Math.round(e.speed * 10) / 10];
     });
-    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask, rb: M.rb ? M.rb.pack() : 0 };
+    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask, rb: M.rb ? M.rb.pack() : 0, cf: M.ctf ? M.ctf.pack() : 0 };
     M.ev = [];
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, msg); });
   }
@@ -358,6 +366,7 @@
           const rs = M.rb.st; M.timeLeft = rs.tLeft; M.score[0] = rs.wins[0]; M.score[1] = rs.wins[1];
           if (rs.ph === 2) finish('rounds');
         } else M.timeLeft -= dt;
+        if (M.ctf) { M.ctf.update(dt); M.score[0] = M.ctf.st.caps[0]; M.score[1] = M.ctf.st.caps[1]; }      // Capture the Flag: score = captures
         for (let i = 0; i < M.ents.length; i++) {
           const e = M.ents[i];
           if (e.human) {
@@ -394,7 +403,8 @@
       phase: M.phase, timeLeft: M.timeLeft, score: M.score.slice(), target: M.target, reason: M.reason,
       ready: M.humans.filter(function (e) { return e.p && e.ready; }).length, humans: total,
       rows: M.ents.map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; }),
-      rb: M.rb ? { round: M.rb.st.round, need: M.rb.need, rounds: M.rb.st.rounds, rph: M.rb.st.ph, bomb: M.rb.st.b.s, bombT: M.rb.st.b.t, hostage: M.rb.st.h.s } : null
+      rb: M.rb ? { round: M.rb.st.round, need: M.rb.need, rounds: M.rb.st.rounds, rph: M.rb.st.ph, bomb: M.rb.st.b.s, bombT: M.rb.st.b.t, hostage: M.rb.st.h.s } : null,
+      ctf: M.ctf ? { caps: M.ctf.st.caps.slice(), f: [M.ctf.st.f[0].s, M.ctf.st.f[1].s] } : null
     };
   }
 

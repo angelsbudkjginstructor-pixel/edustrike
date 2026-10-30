@@ -8,7 +8,7 @@
   const ES = (window.ES = window.ES || {});
   const T = window.THREE;
 
-  const HALF = 30;       // arena is 60 x 60 metres
+  const HALF = 30;       // arena is 60 x 60 metres (Capture the Flag: 60 wide and 90 long, see opts.ctf)
   const STEP = 0.25;     // how high a player can step up onto a low crate
   const LOW = 1.25;      // boxes this low can be hopped onto
 
@@ -78,6 +78,11 @@
   ES.buildWorld = function (scene, opts) {
     opts = opts || {};
     const FANCY = !!opts.fancy, REAL = !!opts.real, NOVIS = !!opts.noVisual;
+    /* Capture the Flag uses a LONGER arena: the far parts of every map (everything with |z| >= 10) slide away from the middle by ZS metres,
+       and a "no man's land" of cover is built in the gap. Width stays 60 m. Everything else (the 5 other modes) is exactly as before. */
+    const CTF = !!opts.ctf, HX = HALF, ZS = CTF ? 15 : 0, HZ = HALF + ZS;
+    let zoff = 0, NOSHIFT = false;                                   // z-shift applied to whatever is being placed right now
+    const zsh = function (z) { return CTF && !NOSHIFT && Math.abs(z) >= 10 ? (z > 0 ? ZS : -ZS) : 0; };
     const MAPID = ES.MAPS_LIST.some(function (m) { return m.id === opts.map; }) ? opts.map : 'park';
     // colours and extras that make each map feel different
     const THEME = MAPID === 'space'
@@ -107,9 +112,10 @@
     // walk = true means a player can stand on top of it (low crates, roofs, stairs).
     function solid(cx, cz, w, d, h, color, cap, style, y0, walk) {
       y0 = y0 || 0;
-      boxes.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h: h, y0: y0, walk: !!walk || (h <= LOW && !y0) });
-      vis.push({ cx: cx, cy: (y0 + h) / 2, cz: cz, w: w, h: h - y0, d: d, color: color });
-      if (cap !== undefined) vis.push({ cx: cx, cy: h + 0.06, cz: cz, w: w + 0.12, h: 0.12, d: d + 0.12, color: cap });
+      const zc = cz + zoff;
+      boxes.push({ x0: cx - w / 2, x1: cx + w / 2, z0: zc - d / 2, z1: zc + d / 2, h: h, y0: y0, walk: !!walk || (h <= LOW && !y0) });
+      vis.push({ cx: cx, cy: (y0 + h) / 2, cz: zc, w: w, h: h - y0, d: d, color: color });
+      if (cap !== undefined) vis.push({ cx: cx, cy: h + 0.06, cz: zc, w: w + 0.12, h: 0.12, d: d + 0.12, color: cap });
       if (FANCY && !NOVIS && !y0 && style !== 'step') fancyDetail(cx, cz, w, d, h, color, cap, style);
     }
 
@@ -152,19 +158,19 @@
       if (style === 'tower') { deco(cx, h + 0.4, cz, 0.12, 0.8, 0.12, 0xdddddd); if (!REAL) sphere(cx, h + 0.85, cz, 0.18, 1, 0xffd23f); }   // antenna with a golden ball (cartoon only)
     }
     function deco(cx, cy, cz, w, h, d, color) {
-      vis.push({ cx: cx, cy: cy, cz: cz, w: w, h: h, d: d, color: color });
+      vis.push({ cx: cx, cy: cy, cz: cz + zoff, w: w, h: h, d: d, color: color });
     }
     function cone(cx, cy, cz, r, h, color) {
-      vis.push({ cone: true, cx: cx, cy: cy, cz: cz, r: r, h: h, color: color });
+      vis.push({ cone: true, cx: cx, cy: cy, cz: cz + zoff, r: r, h: h, color: color });
     }
     function sphere(cx, cy, cz, r, sy, color) {        // Fancy: a squashed/stretched ball
-      vis.push({ sphere: true, cx: cx, cy: cy, cz: cz, r: r, sy: sy, color: color });
+      vis.push({ sphere: true, cx: cx, cy: cy, cz: cz + zoff, r: r, sy: sy, color: color });
     }
     function cyl(cx, cy, cz, r0, r1, h, color) {
-      vis.push({ cyl: true, cx: cx, cy: cy, cz: cz, r0: r0, r1: r1, h: h, color: color });
+      vis.push({ cyl: true, cx: cx, cy: cy, cz: cz + zoff, r0: r0, r1: r1, h: h, color: color });
     }
     function tree(cx, cz, collide) {
-      if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz - 0.5, z1: cz + 0.5, h: 5, y0: 0, walk: false });
+      if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz + zoff - 0.5, z1: cz + zoff + 0.5, h: 5, y0: 0, walk: false });
       if (MAPID === 'snow') {                            // snowy pine: dark green layers with a white snow top
         deco(cx, 0.6, cz, 0.5, 1.2, 0.5, 0x7a5233);
         cone(cx, 2.3, cz, 1.7, 2.4, 0x2b6b4b); cone(cx, 3.5, cz, 1.35, 1.9, 0xeaf3f8); cone(cx, 4.5, cz, 0.95, 1.7, 0x2f7a55); cone(cx, 5.2, cz, 0.6, 1.1, 0xffffff);
@@ -233,7 +239,8 @@
     }
     /* A building you can climb: a solid block with a flat roof you can stand on, a low wall round the roof, and stairs.
        side = which face the stairs are on: '+x' '-x' '+z' '-z'. c = where along that face the stairs are (x or z). */
-    function building(cx, cz, w, d, h, color, capColor, side, c) {
+    function building(cx, cz, w, d, h, color, capColor, side, c) { const zo = zoff; zoff = zsh(cz); buildingRaw(cx, cz, w, d, h, color, capColor, side, c); zoff = zo; }
+    function buildingRaw(cx, cz, w, d, h, color, capColor, side, c) {
       solid(cx, cz, w, d, h, color, capColor, 'wall', 0, true);
       const n = Math.round(h / 0.24), sw = 3;
       let fx = cx, fz = cz, dx = 0, dz = 0;
@@ -250,6 +257,7 @@
        so the map is perfectly fair for both teams. */
     function both(x, z, w, d, h, kind) {
       [[x, z], [-x, -z]].forEach(function (p) {
+        zoff = zsh(p[1]);
         const zone = Math.abs(p[1]) < 10 ? 0 : (p[1] > 0 ? 1 : 2);   // 0 neutral, 1 blue half, 2 red half
         if (kind === 'wall') {
           const c = WALLC ? WALLC[zone] : (zone === 1 ? 0x5b8fe0 : (zone === 2 ? 0xe0735b : 0xc4ccd8));
@@ -263,15 +271,16 @@
         } else if (kind === 'tree') {
           tree(p[0], p[1], true);
         }
+        zoff = 0;
       });
     }
 
     /* ---------- the map ---------- */
     // outer walls (same for every map)
-    solid(0, -HALF - 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
-    solid(0, HALF + 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
-    solid(-HALF - 0.5, 0, 1, 61, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
-    solid(HALF + 0.5, 0, 1, 61, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
+    solid(0, -HZ - 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
+    solid(0, HZ + 0.5, 63, 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
+    solid(-HX - 0.5, 0, 1, 2 * HZ + 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
+    solid(HX + 0.5, 0, 1, 2 * HZ + 1, 4, 0x9aa5b8, 0xdfe5ee, 'outer');
 
     function buildPark() {
     // centre building with four doorways
@@ -322,7 +331,8 @@
       });
     }
     /* a climbable stone block with battlements and stairs (same idea as building(), but castle style) */
-    function castleBlock(cx, cz, w, d, h, color, side, c) {
+    function castleBlock(cx, cz, w, d, h, color, side, c) { const zo = zoff; zoff = zsh(cz); castleBlockRaw(cx, cz, w, d, h, color, side, c); zoff = zo; }
+    function castleBlockRaw(cx, cz, w, d, h, color, side, c) {
       solid(cx, cz, w, d, h, color, 0xe3dcc8, 'wall', 0, true);
       const n = Math.round(h / 0.24), sw = 3;
       let fx = cx, fz = cz, dx = 0, dz = 0;
@@ -455,7 +465,7 @@
       both(-15, 26, 2, 2, 3.5, 'tower'); both(15, 4, 2, 2, 3.5, 'tower');
       // glowing floor strips
       deco(0, 0.03, 0, 13, 0.06, 13, 0x4b5671);
-      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40, 0x5fe6ff); });
+      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40 + 2 * ZS, 0x5fe6ff); });
     }
 
     /* Snowy Village: an ice fort in the middle, wooden cabins with snowy roofs (stairs up), snow walls, ice pillars, snowmen, pine trees. */
@@ -527,33 +537,52 @@
       // big coral and kelp that block the way
       both(-25, 3, 1, 1, 5, 'tree'); both(26, -4, 1, 1, 5, 'tree'); both(-12, 14, 1, 1, 5, 'tree'); both(6, 24, 1, 1, 5, 'tree');
       // glowing blue floor strips (like landing lights)
-      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40, 0x7fe6ff); });
+      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40 + 2 * ZS, 0x7fe6ff); });
+    }
+
+    /* Capture the Flag only: the middle of the longer arena ("no man's land"): cover to fight around, and a climbable building on each side if the map has them. */
+    function ctfGap() {
+      NOSHIFT = true;
+      const B = { rooftops: [0xc9d0dc, 0xeef2f7], jungle: [0x6f8f55, 0x97b078], space: [0x6a7693, 0x5fe6ff], snow: [0xa9744b, 0xffffff], underwater: [0x4aa8b8, 0xff8fae] }[MAPID];
+      [[1, 0], [-1, 1]].forEach(function (m) {                      // one cabin / hall on each half (the red one is the mirror of the blue one)
+        const sgn = m[0], flip = m[1];
+        if (MAPID === 'castle') castleBlock(-18 * sgn, 19 * sgn, 6, 5, 2.88, 0x9a968c, flip ? flipSide['+x'] : '+x', 19 * sgn);
+        else if (B) building(-18 * sgn, 19 * sgn, 7, 6, 2.4, B[0], B[1], flip ? flipSide['+x'] : '+x', 19 * sgn);
+      });
+      both(-4, 17, 6, 1, 2.4, 'wall'); both(10, 21.5, 5, 1, 2.4, 'wall');
+      both(8, 14, 1.6, 1.6, 0.9, 'crate'); both(9.6, 14, 1.6, 1.6, 0.9, 'crate'); both(8, 15.6, 1.6, 1.6, 0.9, 'crate');
+      both(-2, 22.5, 4, 1, 1.0, 'crate');
+      both(18, 14.5, 2.2, 2.2, 3.6, 'tower');
+      both(-25, 14, 1, 1, 5, 'tree'); both(24, 22, 1, 1, 5, 'tree');
+      NOSHIFT = false;
     }
 
     if (MAPID === 'snow') buildSnow(); else if (MAPID === 'underwater') buildUnderwater(); else if (MAPID === 'rooftops') buildRooftops(); else if (MAPID === 'castle') buildCastle(); else if (MAPID === 'jungle') buildJungle(); else if (MAPID === 'space') buildSpace(); else buildPark();
+    if (CTF) ctfGap();
 
     // ---- decoration (no collision): base pads, flags, ring of trees outside ----
     const PADS = MAPID === 'underwater' ? [0x7fb0ff, 0xff9d8f] : MAPID === 'space' ? [0x2d4f93, 0x93392f] : (MAPID === 'jungle' ? [0x9bbbe0, 0xe0a898] : [0xa9cdff, 0xffb4a2]);
-    deco(0, 0.03, 25.5, 20, 0.06, 9, PADS[0]);
-    deco(0, 0.03, -25.5, 20, 0.06, 9, PADS[1]);
+    deco(0, 0.03, 25.5 + ZS, 20, 0.06, 9, PADS[0]);
+    deco(0, 0.03, -25.5 - ZS, 20, 0.06, 9, PADS[1]);
     [[1, 0x2f86ff], [-1, 0xff5a3c]].forEach(function (t) {
-      const z = 28.6 * t[0];
+      const z = (28.6 + ZS) * t[0];
       deco(-12, 2.5, z, 0.2, 5, 0.2, 0xdddddd); deco(-11.2, 4.4, z, 1.6, 1.0, 0.06, t[1]);
       deco(12, 2.5, z, 0.2, 5, 0.2, 0xdddddd);  deco(12.8, 4.4, z, 1.6, 1.0, 0.06, t[1]);
     });
-    const RING = THEME.sky && THEME.sky.trees === false ? 0 : (MAPID === 'jungle' ? 40 : (MAPID === 'underwater' ? 34 : 26));
+    const RING = THEME.sky && THEME.sky.trees === false ? 0 : Math.round((MAPID === 'jungle' ? 40 : (MAPID === 'underwater' ? 34 : 26)) * (CTF ? 1.3 : 1));
     for (let i = 0; i < RING; i++) {
       const a = (i / RING) * Math.PI * 2;
       const edge = 35 + (i % 3) * 3;                                   // distance of the tree from the middle, measured to a square
       const r = edge / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
-      tree(Math.cos(a) * r, Math.sin(a) * r, false);
+      tree(Math.cos(a) * r, Math.sin(a) * r * (HZ / HX), false);
     }
-    for (let i = -28; i <= 28 && RING; i += 8) { tree(i, -35.5 - (i % 3), false); tree(i + 3, 35.5 + (i % 2), false); }
+    for (let i = -28; i <= 28 && RING; i += 8) { tree(i, -35.5 - ZS - (i % 3), false); tree(i + 3, 35.5 + ZS + (i % 2), false); }
+    for (let i = -34; CTF && RING && i <= 34; i += 10) { tree(-35.5 - (i % 3), i * 1.3, false); tree(35.5 + (i % 2), i * 1.3 + 2, false); }      // CTF: the long sides need trees too
     if (!RING) {                                        // space station: glowing light pylons instead of trees
       for (let i = -28; i <= 28; i += 8) [-1, 1].forEach(function (sg) {
-        cyl(i, 3, sg * 33.5, 0.35, 0.5, 6, 0x6b7694); deco(i, 6.2, sg * 33.5, 0.9, 0.5, 0.9, sg > 0 ? 0x5fe6ff : 0xff7ad9);
+        cyl(i, 3, sg * (33.5 + ZS), 0.35, 0.5, 6, 0x6b7694); deco(i, 6.2, sg * (33.5 + ZS), 0.9, 0.5, 0.9, sg > 0 ? 0x5fe6ff : 0xff7ad9);
       });
-      [-1, 1].forEach(function (sg) { for (let i = -24; i <= 24; i += 12) { cyl(sg * 33.5, 2.5, i, 0.35, 0.5, 5, 0x6b7694); deco(sg * 33.5, 5.3, i, 0.9, 0.5, 0.9, 0x5fe6ff); } });
+      [-1, 1].forEach(function (sg) { for (let i = -24 - ZS; i <= 24 + ZS; i += 12) { cyl(sg * 33.5, 2.5, i, 0.35, 0.5, 5, 0x6b7694); deco(sg * 33.5, 5.3, i, 0.9, 0.5, 0.9, 0x5fe6ff); } });
     }
 
     /* ---------- Fancy only: flowers, bushes, rocks, far hills, light beacons, clouds ---------- */
@@ -562,8 +591,8 @@
       const rr = function (a, b) { return a + Math.random() * (b - a); };
       // flowers + grass tufts in the open grass (never inside a wall)
       const petals = [0xff6fa5, 0xffd23f, 0xffffff, 0xb78bff, 0xff8a3d];
-      for (let i = 0, made = 0; THEME.flowers && i < 400 && made < 150; i++) {
-        const x = rr(-29, 29), z = rr(-29, 29);
+      for (let i = 0, made = 0; THEME.flowers && i < 400 && made < 150 * (HZ / HX); i++) {
+        const x = rr(-29, 29), z = rr(-29 - ZS, 29 + ZS);
         if (blockedAt(x, z, 1.0) || (Math.abs(x) < 7.5 && Math.abs(z) < 7.5)) continue;
         made++;
         deco(x, 0.13, z, 0.03, 0.26, 0.03, 0x3a9a48);
@@ -571,9 +600,9 @@
         if (made % 3 === 0) cone(x + 0.25, 0.18, z + 0.1, 0.12, 0.36, 0x4fb85a);
       }
       // bushes and rocks outside the walls
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 60 * (HZ / HX); i++) {
         const side = i % 4, t = rr(-34, 34), off = rr(32.5, 39);
-        const x = side < 2 ? t : (side === 2 ? off : -off), z = side < 2 ? (side === 0 ? off : -off) : t;
+        const x = side < 2 ? t : (side === 2 ? off : -off), z = (side < 2 ? (side === 0 ? off : -off) : t) * (HZ / HX);
         if (i % 5 === 0) { sphere(x, 0.45, z, rr(0.5, 0.9), 0.65, 0x9aa5b8); }
         else { sphere(x, 0.55, z, rr(0.7, 1.2), 0.8, (THEME.bush || [0x2f9a4e, 0x3bb35c, 0x57c46c])[i % 3]); if (i % 2) sphere(x + 0.7, 0.4, z + 0.3, 0.55, 0.8, (THEME.bush || [0, 0, 0x3bb35c])[2]); }
       }
@@ -633,37 +662,39 @@
     if (!NOVIS) {
       const cv = document.createElement('canvas');
       if (FANCY) {
-        const S = REAL ? (opts.texSize || 1024) : 1024, k = S / 64;     // 16 pixels per metre (32 on Ultra)
-        cv.width = cv.height = S;
+        let S = REAL ? (opts.texSize || 1024) : 1024;                   // 16 pixels per metre (32 on Ultra)
+        if (CTF && S > 1536) S = 1536;                                  // the longer arena would need a huge picture: keep it lighter
+        const k = S / 64, TW = S, TH = Math.round(S * (64 + 2 * ZS) / 64);
+        cv.width = TW; cv.height = TH;
         const c2 = cv.getContext('2d');
-        c2.fillStyle = THEME.fancyBase; c2.fillRect(0, 0, S, S);
-        for (let i = 0; i < 2600; i++) {                                // soft grass patches (or asphalt patches in the city)
+        c2.fillStyle = THEME.fancyBase; c2.fillRect(0, 0, TW, TH);
+        for (let i = 0; i < Math.round(2600 * TH / TW); i++) {                                // soft grass patches (or asphalt patches in the city)
           const g = Math.random();
           c2.fillStyle = THEME.patch ? (g < 0.4 ? THEME.patch[0] : (g < 0.8 ? THEME.patch[1] : THEME.patch[2])) : THEME.flowers ? (g < 0.4 ? 'rgba(98,176,84,.55)' : (g < 0.8 ? 'rgba(150,214,118,.5)' : 'rgba(70,150,76,.45)')) : (g < 0.4 ? 'rgba(110,116,126,.45)' : (g < 0.8 ? 'rgba(170,176,186,.4)' : 'rgba(90,96,106,.4)'));
           const w = 6 + Math.random() * 26, h = 4 + Math.random() * 14;
-          c2.fillRect(Math.random() * S, Math.random() * S, w, h);
+          c2.fillRect(Math.random() * TW, Math.random() * TH, w, h);
         }
         const tiles = function (x0, z0, w, d, a, b2, gap) {              // a tile floor (world metres -> pixels)
-          const px = (x0 + 32) * k, pz = (z0 + 32) * k, pw = w * k, pd = d * k, t = 1.6 * k;
+          const px = (x0 + 32) * k, pz = (z0 + 32 + ZS) * k, pw = w * k, pd = d * k, t = 1.6 * k;
           for (let y = 0; y < pd; y += t) for (let x = 0; x < pw; x += t) {
             c2.fillStyle = (((x / t) | 0) + ((y / t) | 0)) % 2 ? a : b2;
             c2.fillRect(px + x, pz + y, Math.min(t, pw - x) - gap, Math.min(t, pd - y) - gap);
           }
         };
         tiles(-6.6, -6.6, 13.2, 13.2, THEME.plaza[0], THEME.plaza[1], 2);   // centre plaza
-        tiles(-10, 21, 20, 9, THEME.blue[0], THEME.blue[1], 2);             // blue base
-        tiles(-10, -30, 20, 9, THEME.red[0], THEME.red[1], 2);              // red base
+        tiles(-10, 21 + ZS, 20, 9, THEME.blue[0], THEME.blue[1], 2);             // blue base
+        tiles(-10, -30 - ZS, 20, 9, THEME.red[0], THEME.red[1], 2);              // red base
         c2.fillStyle = THEME.lane;                                          // dashed centre lane
-        for (let z = -20; z < 20; z += 2.4) if (Math.abs(z) > 7.5) c2.fillRect((-0.15 + 32) * k, (z + 32) * k, 0.3 * k, 1.2 * k);
+        for (let z = -20 - ZS; z < 20 + ZS; z += 2.4) if (Math.abs(z) > 7.5) c2.fillRect((-0.15 + 32) * k, (z + 32 + ZS) * k, 0.3 * k, 1.2 * k);
         const flowers = ['#ff6fa5', '#ffd23f', '#ffffff', '#b78bff'];     // painted flower dots
-        for (let i = 0; THEME.flowers && i < 380; i++) { c2.fillStyle = flowers[i % 4]; c2.beginPath(); c2.arc(Math.random() * S, Math.random() * S, 2 + Math.random() * 2, 0, 7); c2.fill(); }
-        c2.strokeStyle = 'rgba(0,0,0,.18)'; c2.lineWidth = 6; c2.strokeRect(3, 3, S - 6, S - 6);
+        for (let i = 0; THEME.flowers && i < 380; i++) { c2.fillStyle = flowers[i % 4]; c2.beginPath(); c2.arc(Math.random() * TW, Math.random() * TH, 2 + Math.random() * 2, 0, 7); c2.fill(); }
+        c2.strokeStyle = 'rgba(0,0,0,.18)'; c2.lineWidth = 6; c2.strokeRect(3, 3, TW - 6, TH - 6);
         if (REAL) {                                                         // fine grain (dirt / grass speckle) and calmer colours
-          for (let i = 0; i < S * S / 90; i++) { c2.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.08)'; c2.fillRect(Math.random() * S, Math.random() * S, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+          for (let i = 0; i < TW * TH / 90; i++) { c2.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.08)'; c2.fillRect(Math.random() * TW, Math.random() * TH, 1 + Math.random() * 2, 1 + Math.random() * 2); }
           try {
-            const cv2 = document.createElement('canvas'); cv2.width = cv2.height = S; const c3 = cv2.getContext('2d');
+            const cv2 = document.createElement('canvas'); cv2.width = TW; cv2.height = TH; const c3 = cv2.getContext('2d');
             c3.filter = 'saturate(0.72) brightness(0.9) contrast(1.06)'; c3.drawImage(cv, 0, 0);
-            c2.clearRect(0, 0, S, S); c2.drawImage(cv2, 0, 0);
+            c2.clearRect(0, 0, TW, TH); c2.drawImage(cv2, 0, 0);
           } catch (e) { /* ctx.filter missing: keep the plain ground */ }
         }
         tex = new T.CanvasTexture(cv);
@@ -675,10 +706,10 @@
         c2.fillStyle = THEME.lowB; c2.fillRect(0, 0, 32, 32); c2.fillRect(32, 32, 32, 32);
         tex = new T.CanvasTexture(cv);
         tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.magFilter = T.NearestFilter;
-        tex.repeat.set(16, 16);
+        tex.repeat.set(16, (64 + 2 * ZS) / 4);
       }
       if (T.SRGBColorSpace) tex.colorSpace = T.SRGBColorSpace;
-      ground = new T.Mesh(new T.PlaneGeometry(64, 64), REAL ? new T.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 }) : new T.MeshLambertMaterial({ map: tex }));
+      ground = new T.Mesh(new T.PlaneGeometry(64, 64 + 2 * ZS), REAL ? new T.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0 }) : new T.MeshLambertMaterial({ map: tex }));
       ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
       scene.add(ground);
       outer = new T.Mesh(new T.PlaneGeometry(400, 400), new T.MeshLambertMaterial({ color: REAL ? shade(THEME.fancyOuter, 0.72) : (FANCY ? THEME.fancyOuter : THEME.lowOuter) }));
@@ -687,7 +718,7 @@
 
       if (FANCY) {
         /* tall beams of light above each team's base (cheap see-through tubes) */
-        [[0x3d8bff, 26.5], [0xff6a45, -26.5]].forEach(function (t) {
+        [[0x3d8bff, 26.5 + ZS], [0xff6a45, -26.5 - ZS]].forEach(function (t) {
           const m = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, 22, 16, 1, true),
             new T.MeshBasicMaterial({ color: t[0], transparent: true, opacity: 0.2, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending, fog: false }));
           m.position.set(0, 11, t[1]); scene.add(m); fx.beams.push(m);
@@ -732,9 +763,9 @@
           }
         }
       }
-      const lim = HALF - r;
-      if (e.x > lim) e.x = lim; else if (e.x < -lim) e.x = -lim;
-      if (e.z > lim) e.z = lim; else if (e.z < -lim) e.z = -lim;
+      const limX = HX - r, limZ = HZ - r;
+      if (e.x > limX) e.x = limX; else if (e.x < -limX) e.x = -limX;
+      if (e.z > limZ) e.z = limZ; else if (e.z < -limZ) e.z = -limZ;
     }
     // Height of the floor under a point (0, or the top of a low crate you are standing on)
     function groundAt(x, z, y) {
@@ -771,8 +802,8 @@
     }
 
     /* ---------- bot path-finding grid ---------- */
-    const CELL = 2, N = (HALF * 2) / CELL;        // 30 x 30 cells
-    const free = new Uint8Array(N * N);
+    const CELL = 2, NX = (HX * 2) / CELL, NZ = (HZ * 2) / CELL;        // 30 x 30 cells (30 x 45 in Capture the Flag)
+    const free = new Uint8Array(NX * NZ);
     function blockedAt(px, pz, r) {
       for (let k = 0; k < boxes.length; k++) {
         const b = boxes[k];
@@ -781,23 +812,23 @@
       }
       return false;
     }
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      free[j * N + i] = blockedAt(-HALF + (i + 0.5) * CELL, -HALF + (j + 0.5) * CELL, 0.65) ? 0 : 1;
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+      free[j * NX + i] = blockedAt(-HX + (i + 0.5) * CELL, -HZ + (j + 0.5) * CELL, 0.65) ? 0 : 1;
     }
     function cellOf(x, z) {
-      const i = Math.max(0, Math.min(N - 1, Math.floor((x + HALF) / CELL)));
-      const j = Math.max(0, Math.min(N - 1, Math.floor((z + HALF) / CELL)));
-      return j * N + i;
+      const i = Math.max(0, Math.min(NX - 1, Math.floor((x + HX) / CELL)));
+      const j = Math.max(0, Math.min(NZ - 1, Math.floor((z + HZ) / CELL)));
+      return j * NX + i;
     }
-    function cx(idx) { return -HALF + ((idx % N) + 0.5) * CELL; }
-    function cz(idx) { return -HALF + (Math.floor(idx / N) + 0.5) * CELL; }
+    function cx(idx) { return -HX + ((idx % NX) + 0.5) * CELL; }
+    function cz(idx) { return -HZ + (Math.floor(idx / NX) + 0.5) * CELL; }
     function nearestFree(idx) {
       if (free[idx]) return idx;
-      const i0 = idx % N, j0 = Math.floor(idx / N);
+      const i0 = idx % NX, j0 = Math.floor(idx / NX);
       for (let r = 1; r < 6; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
         const i = i0 + di, j = j0 + dj;
-        if (i < 0 || j < 0 || i >= N || j >= N) continue;
-        if (free[j * N + i]) return j * N + i;
+        if (i < 0 || j < 0 || i >= NX || j >= NZ) continue;
+        if (free[j * NX + i]) return j * NX + i;
       }
       return -1;
     }
@@ -805,13 +836,13 @@
     // (Without this, a bot hugging a wall could "snap" to a cell on the OTHER side of the wall and get stuck.)
     function nearestFreeVisible(idx, x, z) {
       if (free[idx] && lineFree(x, z, cx(idx), cz(idx), 0.3)) return idx;
-      const i0 = idx % N, j0 = Math.floor(idx / N);
+      const i0 = idx % NX, j0 = Math.floor(idx / NX);
       let best = -1, bd = 1e9;
       for (let r = 1; r < 5 && best < 0; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
         const i = i0 + di, j = j0 + dj;
-        if (i < 0 || j < 0 || i >= N || j >= N || !free[j * N + i]) continue;
-        const px = cx(j * N + i), pz = cz(j * N + i), d = (px - x) * (px - x) + (pz - z) * (pz - z);
-        if (d < bd && lineFree(x, z, px, pz, 0.3)) { bd = d; best = j * N + i; }
+        if (i < 0 || j < 0 || i >= NX || j >= NZ || !free[j * NX + i]) continue;
+        const px = cx(j * NX + i), pz = cz(j * NX + i), d = (px - x) * (px - x) + (pz - z) * (pz - z);
+        if (d < bd && lineFree(x, z, px, pz, 0.3)) { bd = d; best = j * NX + i; }
       }
       return best >= 0 ? best : nearestFree(idx);
     }
@@ -822,30 +853,30 @@
     }
 
     // which free cells can actually be reached from the blue spawn? (used so bots never pick a sealed-off spot)
-    const reach = new Uint8Array(N * N);
+    const reach = new Uint8Array(NX * NZ);
     const spawns = [[], []];
     for (let x = -9; x <= 9; x += 3) {
-      spawns[0].push({ x: x, z: 26.5, yaw: 0 });
-      spawns[1].push({ x: -x, z: -26.5, yaw: Math.PI });
+      spawns[0].push({ x: x, z: 26.5 + ZS, yaw: 0 });
+      spawns[1].push({ x: -x, z: -26.5 - ZS, yaw: Math.PI });
     }
     (function flood() {
-      const start = nearestFree(cellOf(0, 26.5));
+      const start = nearestFree(cellOf(0, 26.5 + ZS));
       const q = [start]; reach[start] = 1;
       while (q.length) {
-        const c = q.pop(), i = c % N, j = Math.floor(c / N);
+        const c = q.pop(), i = c % NX, j = Math.floor(c / NX);
         for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
           if (!di && !dj) continue;
           const ni = i + di, nj = j + dj;
-          if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
-          const n = nj * N + ni;
+          if (ni < 0 || nj < 0 || ni >= NX || nj >= NZ) continue;
+          const n = nj * NX + ni;
           if (!free[n] || reach[n]) continue;
-          if (di && dj && (!free[j * N + ni] || !free[nj * N + i])) continue;
+          if (di && dj && (!free[j * NX + ni] || !free[nj * NX + i])) continue;
           reach[n] = 1; q.push(n);
         }
       }
     })();
     const reachList = [];
-    for (let k = 0; k < N * N; k++) if (reach[k]) reachList.push(k);
+    for (let k = 0; k < NX * NZ; k++) if (reach[k]) reachList.push(k);
 
     function randomSpot(zBias) {
       // zBias: -1 prefers the red half, +1 the blue half, 0 anywhere
@@ -858,7 +889,7 @@
     }
 
     // A* over the grid, then "string pulling" to remove zig-zags. Returns [{x,z},...] or null.
-    const gScore = new Float32Array(N * N), prev = new Int16Array(N * N), closed = new Uint8Array(N * N);
+    const gScore = new Float32Array(NX * NZ), prev = new Int16Array(NX * NZ), closed = new Uint8Array(NX * NZ);
     function findPath(x0, z0, x1, z1) {
       const s = nearestFreeVisible(cellOf(x0, z0), x0, z0), g = nearestFreeVisible(cellOf(x1, z1), x1, z1);
       if (s < 0 || g < 0 || !reach[g]) return null;
@@ -882,7 +913,7 @@
         }
         return top;
       }
-      function h(idx) { const dx = Math.abs(idx % N - g % N), dz = Math.abs(Math.floor(idx / N) - Math.floor(g / N)); return Math.max(dx, dz) + 0.41 * Math.min(dx, dz); }
+      function h(idx) { const dx = Math.abs(idx % NX - g % NX), dz = Math.abs(Math.floor(idx / NX) - Math.floor(g / NX)); return Math.max(dx, dz) + 0.41 * Math.min(dx, dz); }
       gScore[s] = 0; push(h(s), s);
       let found = false;
       while (heap.length) {
@@ -890,14 +921,14 @@
         if (closed[cur]) continue;
         closed[cur] = 1;
         if (cur === g) { found = true; break; }
-        const i = cur % N, j = Math.floor(cur / N);
+        const i = cur % NX, j = Math.floor(cur / NX);
         for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
           if (!di && !dj) continue;
           const ni = i + di, nj = j + dj;
-          if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
-          const n = nj * N + ni;
+          if (ni < 0 || nj < 0 || ni >= NX || nj >= NZ) continue;
+          const n = nj * NX + ni;
           if (!free[n] || closed[n]) continue;
-          if (di && dj && (!free[j * N + ni] || !free[nj * N + i])) continue;   // no cutting corners
+          if (di && dj && (!free[j * NX + ni] || !free[nj * NX + i])) continue;   // no cutting corners
           const ng = gScore[cur] + (di && dj ? 1.414 : 1);
           if (ng < gScore[n]) { gScore[n] = ng; prev[n] = cur; push(ng + h(n), n); }
         }
@@ -920,22 +951,25 @@
 
     /* ---------- radar picture (drawn once, reused every frame) ---------- */
     function drawRadarBase(ctx, size) {
-      const s = size / (HALF * 2);
-      ctx.fillStyle = '#16301d'; ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = 'rgba(80,140,255,.28)'; ctx.fillRect(0, size * 0.5 + 21 * s, size, 9 * s);
-      ctx.fillStyle = 'rgba(255,100,70,.28)'; ctx.fillRect(0, 0, size, 9 * s);
+      const s = size / (HZ * 2), ox = size / 2, oz = size / 2;            // the radar is square: a long arena leaves a dark strip on each side
+      ctx.fillStyle = '#0c1a11'; ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#16301d'; ctx.fillRect(ox - HX * s, 0, HX * 2 * s, size);
+      ctx.fillStyle = 'rgba(80,140,255,.28)'; ctx.fillRect(ox - HX * s, oz + (21 + ZS) * s, HX * 2 * s, 9 * s);
+      ctx.fillStyle = 'rgba(255,100,70,.28)'; ctx.fillRect(ox - HX * s, 0, HX * 2 * s, 9 * s);
       boxes.forEach(function (b) {
         if (b.y0) return;
         ctx.fillStyle = b.walk && b.h > LOW ? '#e3d9b8' : (b.h > LOW ? '#9fb0c8' : '#c99a5b');
-        ctx.fillRect((b.x0 + HALF) * s, (b.z0 + HALF) * s, (b.x1 - b.x0) * s, (b.z1 - b.z0) * s);
+        ctx.fillRect(ox + b.x0 * s, oz + b.z0 * s, (b.x1 - b.x0) * s, (b.z1 - b.z0) * s);
       });
     }
 
     /* Weapon crate spots: the same list for every computer (so the teacher's page and the students agree).
        Candidates are on the blue half and mirrored to the red half; only open ground is used. */
     const crateSpots = [];
-    [[0, 13], [-12, 19], [12, 13], [-20, 6], [20, 12], [0, 22], [-6, 10], [8, 22], [-14, 12], [14, 5]].forEach(function (c) {
-      if (crateSpots.length >= 6) return;
+    const crateCands = [[0, 13], [-12, 19], [12, 13], [-20, 6], [20, 12], [0, 22], [-6, 10], [8, 22], [-14, 12], [14, 5]].map(function (c) { return [c[0], c[1] + zsh(c[1])]; });
+    if (CTF) crateCands.unshift([-8, 13], [12, 18], [0, 27]);          // CTF: a few more in the middle of the long arena
+    crateCands.forEach(function (c) {
+      if (crateSpots.length >= (CTF ? 8 : 6)) return;
       if (blockedAt(c[0], c[1], 1.2) || blockedAt(-c[0], -c[1], 1.2)) return;
       crateSpots.push({ x: c[0], z: c[1] }); crateSpots.push({ x: -c[0], z: -c[1] });
     });
@@ -949,7 +983,7 @@
       for (let ring = 1; ring <= 14; ring++) {                    // nothing in the list was free: search outward from the first one
         for (let k = 0; k < 16; k++) {
           const a = k / 16 * Math.PI * 2, x = cands[0][0] + Math.cos(a) * ring, z = cands[0][1] + Math.sin(a) * ring;
-          if (Math.abs(x) > HALF - 3 || Math.abs(z) > HALF - 3) continue;
+          if (Math.abs(x) > HX - 3 || Math.abs(z) > HZ - 3) continue;
           const cell = cellOf(x, z);
           if (!blockedAt(x, z, r) && reach[cell] && free[cell]) return { x: Math.round(x * 2) / 2, z: Math.round(z * 2) / 2 };
         }
@@ -961,8 +995,14 @@
       z: pickSpot([[0, 12], [9, 10], [-9, 10], [0, 16], [14, 13], [-14, 13], [0, 8], [7, 15], [-7, 15]], 1.4),
       s: pickSpot([[0, 21.5], [6, 21.5], [-6, 21.5], [0, 18.5], [0, 23.5], [10, 21.5], [-10, 21.5]], 1.6)
     };
+    /* Capture the Flag: where each team's flag stands (at their base; the red spot is the blue spot turned round, so it is fair) */
+    let flagSpots = null;
+    if (CTF) {
+      const fb = pickSpot([[0, 36.5], [6, 36.5], [-6, 36.5], [0, 33.5], [10, 36.5], [-10, 36.5], [0, 39]], 1.6);
+      flagSpots = { b: fb, r: { x: -fb.x, z: -fb.z } };
+    }
     return {
-      half: HALF, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID, crateSpots: crateSpots, rbSpots: rbSpots,
+      half: HALF, halfZ: HZ, ctf: CTF, flagSpots: flagSpots, boxes: boxes, mesh: mesh, spawns: spawns, map: MAPID, crateSpots: crateSpots, rbSpots: rbSpots,
       collide: collide, groundAt: groundAt,
       rayWorld: rayWorld, clearLine: clearLine,
       findPath: findPath, randomSpot: randomSpot, lineFree: lineFree, blockedAt: blockedAt,

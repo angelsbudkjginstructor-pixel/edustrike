@@ -88,6 +88,7 @@
         <select id="set-mode">
           <option value="normal">⚔️ Normal – tag the other team</option>
           <option value="rb">🆘💣 Rescue &amp; Bomb – rounds</option>
+          <option value="ctf">🚩 Capture the Flag – long arena</option>
         </select>
       </label>
       <div id="set-rb" class="hidden">
@@ -99,6 +100,7 @@
         </label>
         <p class="hint"><b style="color:#2f86ff">Blue</b>: free the 🆘 hostage (press <b>E</b> next to them, answer a question) and bring them to the blue zone – or defuse the bomb. <b style="color:#ff5a3c">Red</b>: plant the 💣 (<b>E</b> + answer). If nobody defuses it in 15 seconds – BOOM! First team to win most rounds wins.</p>
       </div>
+      <p id="set-ctf" class="hint hidden"><b style="color:#2f86ff">Blue</b> and <b style="color:#ff5a3c">Red</b> each guard a 🚩 flag in a LONGER arena. Walk to the enemy flag, press <b>E</b> and answer a question to grab it, then carry it to <b>your own base circle</b> to score. If the carrier is tagged the flag drops (and flies home after 10 seconds). Most captures when time runs out wins!</p>
       <label class="row" id="row-kills">Win by tagging
         <select id="set-kills">
           <option value="10">10 enemies</option><option value="15">15 enemies</option>
@@ -321,6 +323,7 @@
 <script src="world.js"></script>
 <script src="bots.js"></script>
 <script src="rb.js"></script>
+<script src="ctf.js"></script>
 <script src="game.js"></script>
 <script src="gate.js"></script>
 <script src="net.js"></script>

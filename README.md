@@ -151,3 +151,14 @@ An old saved "Fancy" setting is treated as Ultra.
 All the numbers are in one table, `ES.MAP_FX` in `js/world.js`, so they are easy to tune. The bots just walk normally.
 
 Fix in this stage: bots in a class Rescue & Bomb match can now finish their missions (the referee page was missing the "bot did it" link).
+
+## Stage 5E - Capture the Flag (long arena)
+
+A new game mode, in solo (vs bots) and in class matches. Choose **🚩 Capture the Flag** in the solo menu or in the teacher's "Game mode" box.
+
+- **Longer arena:** the chosen map is built about 1.5× longer (60 m wide, 90 m long). The other modes use the normal size. The far parts of the map slide away from the middle and a "no man's land" with cover (and a climbable cabin/hall on maps that have them) fills the gap. Same look, song and map effect.
+- **Rules:** each team has a 🚩 flag at its base. Walk to the ENEMY flag, press **E** and answer a question to grab it. Carry it to YOUR OWN base circle to score a capture (your own flag does not have to be at home). If the carrier is tagged the flag drops there; a teammate can pick it up by walking over it, otherwise it flies home after 10 seconds. The carrier runs at normal speed. The team with the most captures when the time runs out wins (equal = draw). The time limit is the normal "Time limit" box.
+- **Bots** attack (the 3 closest go for the flag, one carries it home), hunt a thief and guard their own flag.
+- **Speed:** no new image or sound files (about 10 KB of code). Measured on a software renderer: about 0.1 ms more per game step, about 20 more draw calls and 2-3 thousand more triangles. Shadows (High / Ultra) follow the player, and the ground picture is capped so the long arena does not need a huge texture.
+- **Files:** `js/ctf.js` (rules, shared by the game and the teacher's referee page), `js/world.js` (`opts.ctf` = the long arena, `world.flagSpots`), `js/bots.js`, `js/game.js`, `js/match.js`.
+- Numbers (grab distance, 10 seconds, capture circle size) are in `ES.CTF` at the top of `js/ctf.js`.
