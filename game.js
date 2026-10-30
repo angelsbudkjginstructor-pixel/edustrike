@@ -26,6 +26,7 @@
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
   let toastT = 0, closeTimer = 0, relockTimer = 0;
   let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
+  let MFX = null, FXD = null;           // map effect: MFX = the floating particles (3D), FXD = the effect numbers for this map (ES.MAP_FX)
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
   let RB = null, RBV = null;            // Rescue & Bomb mode: RB = the rules engine (rb.js), RBV = the 3D pieces (null in normal mode)
   const myTeam = function () { return NET ? NET.team : 0; };
@@ -78,7 +79,7 @@
     const skyTex = new T.CanvasTexture(sc);
     if (T.SRGBColorSpace) skyTex.colorSpace = T.SRGBColorSpace;
     scene.background = skyTex;
-    scene.fog = new T.Fog(SKY ? SKY.fog : (gfx.real ? 0xd8e6f0 : 0xcfeaff), gfx.real ? 45 : 22, gfx.fog);
+    scene.fog = new T.Fog(SKY ? SKY.fog : (gfx.real ? 0xd8e6f0 : 0xcfeaff), (SKY && SKY.fogNear) || (gfx.real ? 45 : 22), SKY && SKY.fogFar ? Math.min(SKY.fogFar, gfx.fog) : gfx.fog);
     scene.add(new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? (gfx.real ? 2.3 : 1.6) : (gfx.real ? 1.2 : 2.1)));
     const sun = sunLight = new T.DirectionalLight(SKY ? SKY.sun : 0xfff4e0, gfx.real ? 2.2 : 1.6);
     if (SKY && SKY.stars) {                                       // a cheap field of stars (one Points object, 260 dots)
@@ -115,6 +116,7 @@
     buildGun();
     buildEffects();
     buildCrates();
+    buildMapFx(world.map);
 
     /* ---- create the fighters ---- */
     ents = [];
@@ -159,7 +161,7 @@
       ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
-      qMission: '', qMax: 0, bannerT: 0,
+      qMission: '', qMax: 0, bannerT: 0, fxT: 3.2, airJ: 0, spaceWas: false,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
     };
@@ -184,7 +186,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false; NET = null; RB = null; RBV = null; G.rb = null;
+    G.active = false; NET = null; RB = null; RBV = null; G.rb = null; MFX = null; FXD = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -1169,6 +1171,7 @@
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').classList.remove('show'); }
     if (S.bannerT > 0) { S.bannerT -= dt; if (S.bannerT <= 0) show('ov-round', false); }
     updateEffects(dt);
+    updateMapFx(dt);
     if (RBV) updateRB(dt);
     if (world && world.update) world.update(dt);
     if (NET) { netTick(dt); return; }
@@ -1191,6 +1194,7 @@
     if (S.phase === 'ended') { animateMeshes(dt); updateCamera(dt); return; }
 
     /* ---- playing ---- */
+    if (S.fxT > 0 && FXD) { S.fxT -= dt; if (S.fxT <= 0) toast(FXD.text, 4.5); }
     const slow = S.qOpen && st.answerMode === 'slow';
     const wdt = slow ? dt * 0.15 : dt;
     if (RB) {                                          // Rescue & Bomb: the rules engine keeps the round clock + bomb (real time, so slow-motion answering cannot freeze the bomb)
@@ -1263,13 +1267,20 @@
         const sp = (keys.ShiftLeft || keys.ShiftRight) ? P.sprint : P.walk;
         wx = (rx * ix + fx * iz) / l * sp; wz = (rz * ix + fz * iz) / l * sp;
       }
-      if (keys.Space && p.onGround) { p.vy = P.jump; p.onGround = false; }
+      const FX = FXD || {};
+      if (keys.Space && p.onGround) { p.vy = P.jump * (FX.jump || 1); p.onGround = false; }
+      else if (keys.Space && !S.spaceWas && !p.onGround && S.airJ < (FX.air || 0)) { p.vy = P.jump * (FX.jump || 1) * 0.9; S.airJ++; ES.audio.sfx('jump'); }   // castle: double jump
+      S.spaceWas = !!keys.Space;
+      if (FX.speed) { wx *= FX.speed; wz *= FX.speed; }
     }
-    const acc = Math.min(1, (p.onGround ? 14 : 3) * dt);
+    if (p.onGround) S.airJ = 0;
+    const acc = Math.min(1, (p.onGround ? (FXD && FXD.accel) || 14 : (FXD && FXD.accel ? Math.max(3, FXD.accel * 0.6) : 3)) * dt);
     p.vx += (wx - p.vx) * acc; p.vz += (wz - p.vz) * acc;
     p.x += p.vx * dt; p.z += p.vz * dt;
     const wasGround = p.onGround;
-    p.vy -= P.gravity * dt; p.y += p.vy * dt;
+    p.vy -= P.gravity * ((FXD && FXD.gravity) || 1) * dt;
+    if (FXD && FXD.glide && keys.Space && !S.qOpen && p.vy < -2.2) p.vy = -2.2;                       // jungle: float down slowly while Space is held
+    p.y += p.vy * dt;
     world.collide(p, P.radius);
     const g = world.groundAt(p.x, p.z, p.y);
     // stay glued to the floor when walking DOWN stairs (a small drop of up to 0.3 m), so controls do not go floaty
@@ -1288,6 +1299,69 @@
       if (S.weapon !== 'pistol' || S.ammo > 0) playerShoot();
       else { S.fireCd = 0.35; ES.audio.sfx('empty'); toast('Out of ammo! Press R and answer a question ⚡', 1.6); S.pulseAmmo = 1; }
     }
+  }
+
+
+  /* =====================================================================
+     MAP EFFECTS (Stage 5D): every map has its own floating particles and its own small "rule"
+     (low gravity, slippery ice, double jump, glide, ...). One single Points object, a few dozen dots, so it stays light.
+     SAFETY: if anything is missing the effect is simply skipped and the game plays normally. */
+  const FX_COL = {
+    snow: [0xffffff], bubbles: [0xd8f6ff, 0x9fe4ff], embers: [0xffb347, 0xff7a2b, 0xffd27a], fireflies: [0xe6ff7a, 0xb8ff6a],
+    petals: [0xff9ec4, 0xffe27a, 0xffffff, 0xc9a8ff], wind: [0xffffff, 0xfff1b8, 0xdde6f2], stardust: [0xbff4ff, 0xffffff, 0xffc2ff]
+  };
+  const FX_SCALE = { low: 0.4, medium: 0.7, high: 1, ultra: 1.4 };       // fewer dots on weaker graphics levels
+  function buildMapFx(mapId) {
+    MFX = null; FXD = (ES.MAP_FX && ES.MAP_FX[mapId]) || null;
+    if (!FXD || !FXD.kind) return;
+    try {
+      const N = Math.round(FXD.n * 1.4), pos = new Float32Array(N * 3), col = new Float32Array(N * 3), cols = FX_COL[FXD.kind] || [0xffffff];
+      const tmp = new T.Color(), vel = [];
+      for (let i = 0; i < N; i++) {
+        tmp.set(cols[i % cols.length]); col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
+        pos[i * 3] = (Math.random() - 0.5) * 50; pos[i * 3 + 1] = Math.random() * 14; pos[i * 3 + 2] = (Math.random() - 0.5) * 50;
+        vel.push({ a: Math.random() * 6.28, s: 0.6 + Math.random() * 0.8 });
+      }
+      const g = new T.BufferGeometry();
+      g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('color', new T.BufferAttribute(col, 3));
+      const cv = document.createElement('canvas'); cv.width = cv.height = 32;               // a soft round dot made by code (no image file)
+      const cx = cv.getContext('2d'), rg = cx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.5, 'rgba(255,255,255,.85)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = rg; cx.fillRect(0, 0, 32, 32);
+      const size = { snow: 0.22, bubbles: 0.3, embers: 0.14, fireflies: 0.2, petals: 0.22, wind: 0.16, stardust: 0.16 }[FXD.kind] || 0.2;
+      const glow = FXD.kind === 'fireflies' || FXD.kind === 'embers' || FXD.kind === 'stardust';
+      const mat = new T.PointsMaterial({ size: size, map: new T.CanvasTexture(cv), vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: 0.95,
+                                         blending: glow ? T.AdditiveBlending : T.NormalBlending });
+      const pts = new T.Points(g, mat); pts.frustumCulled = false; scene.add(pts);
+      MFX = { pts: pts, pos: pos, vel: vel, N: N, t: 0 };
+    } catch (err) { MFX = null; }
+  }
+  function updateMapFx(dt) {
+    if (!MFX || !player) return;
+    const M = MFX, k = FXD.kind, p = player, n = Math.min(M.N, Math.round(FXD.n * (FX_SCALE[G.level] || 1)));
+    M.t += dt; M.pts.geometry.setDrawRange(0, n);
+    const pos = M.pos, R = 25;                                              // dots live in a box 50 m wide round the player and wrap around
+    for (let i = 0; i < n; i++) {
+      const v = M.vel[i], j = i * 3;
+      let x = pos[j], y = pos[j + 1], z = pos[j + 2];
+      if (k === 'snow') { y -= (1.4 + v.s) * dt; x += Math.sin(M.t * 0.7 + v.a) * 0.5 * dt; z += Math.cos(M.t * 0.6 + v.a) * 0.4 * dt; }
+      else if (k === 'bubbles') { y += (0.7 + v.s) * dt; x += Math.sin(M.t * 1.3 + v.a) * 0.4 * dt; z += Math.cos(M.t * 1.1 + v.a) * 0.4 * dt; }
+      else if (k === 'embers') { y += (0.5 + v.s * 0.8) * dt; x += Math.sin(M.t * 2 + v.a) * 0.6 * dt; z += Math.cos(M.t * 1.7 + v.a) * 0.4 * dt; }
+      else if (k === 'fireflies') { x += Math.sin(M.t * 0.8 + v.a) * 0.9 * dt; z += Math.cos(M.t * 0.7 + v.a * 2) * 0.9 * dt; y += Math.sin(M.t * 1.2 + v.a * 3) * 0.5 * dt; }
+      else if (k === 'petals') { x += Math.sin(M.t * 0.5 + v.a) * 0.9 * dt + 0.3 * dt; z += Math.cos(M.t * 0.4 + v.a) * 0.6 * dt; y += Math.sin(M.t * 1.4 + v.a * 2) * 0.35 * dt - 0.1 * dt; }
+      else if (k === 'wind') { x += (3 + v.s * 3) * dt; y += Math.sin(M.t * 2 + v.a) * 0.6 * dt; z += Math.sin(M.t * 0.5 + v.a) * 0.4 * dt; }
+      else { x += Math.sin(M.t * 0.3 + v.a) * 0.25 * dt; y += Math.cos(M.t * 0.4 + v.a) * 0.2 * dt; z += Math.cos(M.t * 0.3 + v.a * 2) * 0.25 * dt; }
+      // wrap round the player; set the height range per kind
+      if (x - p.x > R) x -= 2 * R; else if (x - p.x < -R) x += 2 * R;
+      if (z - p.z > R) z -= 2 * R; else if (z - p.z < -R) z += 2 * R;
+      if (k === 'snow') { if (y < 0.05) y = 11 + Math.random() * 3; }
+      else if (k === 'bubbles' || k === 'embers') { if (y > 11) y = 0.1; }
+      else if (k === 'fireflies' || k === 'petals') { if (y < 0.4) y = 0.4 + Math.random(); if (y > 5) y = 5 - Math.random(); }
+      else if (k === 'wind') { if (y < 0.6) y = 0.6; if (y > 7) y = 7; }
+      else { if (y < 0.5) y = 8; if (y > 9) y = 0.7; }
+      pos[j] = x; pos[j + 1] = y; pos[j + 2] = z;
+    }
+    M.pts.geometry.attributes.position.needsUpdate = true;
   }
 
   /* Gentle push so fighters do not stand inside each other */
@@ -1384,6 +1458,7 @@
       else goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
     }
     show('ready-rb', !!RB);
+    const fxl = $('ready-fx'); if (fxl) { fxl.textContent = FXD ? FXD.text : ''; show('ready-fx', !!FXD); }
     show('pause-net', !!NET);
     updateHud(0, true);
   }
@@ -1722,6 +1797,7 @@
     if (S.phase === 'ready' || S.phase === 'wait' || S.phase === 'count') lookKeys(dt);
     netInterp(dt);
     if (S.phase === 'play') {
+      if (S.fxT > 0 && FXD) { S.fxT -= dt; if (S.fxT <= 0) toast(FXD.text, 4.5); }
       S.qCd = Math.max(0, S.qCd - dt);
       S.timeLeft = Math.max(0, S.timeLeft - dt); if (!RB) announceClock();         // the referee corrects this a few times a second
       if (S.qOpen && S.qState === 'asking' && S.qMax) {

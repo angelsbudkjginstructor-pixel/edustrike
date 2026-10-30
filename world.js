@@ -18,12 +18,31 @@
     { id: 'rooftops', name: '🏙️ City Rooftops', desc: 'Buildings with stairs - fight from the roofs!' },
     { id: 'castle', name: '🏰 Castle', desc: 'Stone walls, a big keep and towers to climb' },
     { id: 'jungle', name: '🌴 Jungle Ruins', desc: 'Old temple, mossy walls and thick trees' },
-    { id: 'space', name: '🚀 Space Station', desc: 'Metal decks, glowing lights and a night sky' }
+    { id: 'space', name: '🚀 Space Station', desc: 'Metal decks, glowing lights and a night sky' },
+    { id: 'snow', name: '❄️ Snowy Village', desc: 'Snow cabins, ice and falling snow' },
+    { id: 'underwater', name: '🌊 Underwater Base', desc: 'A sunken ship, coral and floaty swimming' }
   ];
   /* sky + light colours for the maps that are not a sunny day (the other maps use the normal blue sky) */
   ES.MAP_SKY = {
     space:  { top: '#02030d', mid: '#0a1030', bot: '#1d2a5a', fog: 0x0c1330, hemiSky: 0x9fb4ff, hemiGround: 0x2a3050, sun: 0xcfd8ff, stars: true, trees: false },
-    jungle: { top: '#6fc4a8', mid: '#b9e6c2', bot: '#e6f4d0', fog: 0xbfe0b8, hemiSky: 0xf2ffe0, hemiGround: 0x4f7a3d, sun: 0xfff0c0 }
+    jungle: { top: '#6fc4a8', mid: '#b9e6c2', bot: '#e6f4d0', fog: 0xbfe0b8, hemiSky: 0xf2ffe0, hemiGround: 0x4f7a3d, sun: 0xfff0c0 },
+    snow:   { top: '#9db9d2', mid: '#d3e1ee', bot: '#f2f7fb', fog: 0xe4eef6, hemiSky: 0xeaf2ff, hemiGround: 0xaab8c8, sun: 0xfff3e6 },
+    underwater: { top: '#0a4a7c', mid: '#1b80b2', bot: '#52c6da', fog: 0x1b7fa8, fogNear: 12, fogFar: 62, hemiSky: 0xa6e6ff, hemiGround: 0x1a6a8a, sun: 0xcff6ff }
+  };
+
+  /* What makes each map special (the "map effect"). Everything is optional and cheap:
+       kind  = which little floating particles are drawn (one single Points object, a few dozen dots)
+       gravity / jump / speed = multipliers for YOUR player (1 = normal)      accel = how fast you start/stop on the ground (14 = normal, small = slippery)
+       air   = extra jumps in the air (double jump)      glide = hold Space while falling to float down slowly
+       text  = the tip shown at the start of the match.  Bots are not affected (they just walk), so it never changes who is winning unfairly. */
+  ES.MAP_FX = {
+    park:       { icon: '🦋', title: 'Bouncy Grass',   kind: 'petals',    n: 90,  jump: 1.25, text: '🦋 Bouncy Grass: the soft grass makes you jump higher!' },
+    rooftops:   { icon: '💨', title: 'City Rush',      kind: 'wind',      n: 80,  speed: 1.1,  text: '💨 City Rush: the wind pushes you - you run a little faster!' },
+    castle:     { icon: '🦘', title: "Knight's Leap",  kind: 'embers',    n: 70,  air: 1,       text: "🦘 Knight's Leap: press Space again in the air for a DOUBLE JUMP!" },
+    jungle:     { icon: '🍃', title: 'Leaf Glide',     kind: 'fireflies', n: 80,  glide: true,   text: '🍃 Leaf Glide: hold Space while you fall to float down slowly!' },
+    space:      { icon: '🌌', title: 'Low Gravity',    kind: 'stardust',  n: 90,  gravity: 0.38, text: '🌌 Low Gravity: you jump super high and float down!' },
+    snow:       { icon: '❄️', title: 'Slippery Ice',   kind: 'snow',      n: 160, accel: 2.6,    text: '❄️ Slippery Ice: you slide when you stop - plan your moves!' },
+    underwater: { icon: '🫧', title: 'Swim Mode',      kind: 'bubbles',   n: 110, gravity: 0.55, speed: 0.93, accel: 7, text: '🫧 Swim Mode: you float and swim - jumps are slow and long!' }
   };
   ES.mapName = function (id) { const m = ES.MAPS_LIST.filter(function (x) { return x.id === id; })[0]; return m ? m.name : ES.MAPS_LIST[0].name; };
 
@@ -67,6 +86,12 @@
       : MAPID === 'jungle'
       ? { lowA: '#5f8f4a', lowB: '#547f42', lowOuter: 0x3f6b3a, fancyBase: '#5c8c48', fancyOuter: 0x3f6b3a, flowers: false, plaza: ['#a9a78f', '#9a987f'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(0,0,0,0)',
           sky: { top: '#6fc4a8', mid: '#b9e6c2', bot: '#e6f4d0', fog: 0xbfe0b8, hemiSky: 0xf2ffe0, hemiGround: 0x4f7a3d, sun: 0xfff0c0 } }
+      : MAPID === 'snow'
+      ? { lowA: '#eef4f9', lowB: '#e0ebf4', lowOuter: 0xdfe9f2, fancyBase: '#e9f1f8', fancyOuter: 0xdfe9f2, flowers: false, plaza: ['#cfe6f4', '#bfdcee'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(120,170,210,.55)',
+          patch: ['rgba(214,228,242,.55)', 'rgba(255,255,255,.5)', 'rgba(190,210,232,.45)'], hills: [0xe8f1f7, 0xd5e4ef, 0xf4f9fc], bush: [0xdfeaf2, 0xcbdceb, 0xeaf2f8] }
+      : MAPID === 'underwater'
+      ? { lowA: '#d5c389', lowB: '#c9b67c', lowOuter: 0x1b6f93, fancyBase: '#d2bf88', fancyOuter: 0x1b6f93, flowers: false, plaza: ['#ecdfae', '#e0d199'], blue: ['#9ec8ff', '#8bb9f5'], red: ['#ffb4a2', '#ffa38f'], lane: 'rgba(255,255,255,.3)',
+          patch: ['rgba(196,176,120,.5)', 'rgba(232,218,170,.45)', 'rgba(170,150,100,.4)'], hills: [0x2a7fa0, 0x3b97b5, 0x226e8c], bush: [0xff7a9a, 0xff9f6e, 0x6fe0a0] }
       : MAPID === 'castle'
       ? { lowA: '#b3aa94', lowB: '#a69d88', lowOuter: 0x6a9a5a, fancyBase: '#b1a88f', fancyOuter: 0x6cb868, flowers: false, plaza: ['#d8d0b8', '#cbc2a8'], blue: ['#b9d6ff', '#a4c8fa'], red: ['#ffc7b8', '#ffb4a2'], lane: 'rgba(0,0,0,0)' }
       : MAPID === 'rooftops'
@@ -140,6 +165,19 @@
     }
     function tree(cx, cz, collide) {
       if (collide) boxes.push({ x0: cx - 0.5, x1: cx + 0.5, z0: cz - 0.5, z1: cz + 0.5, h: 5, y0: 0, walk: false });
+      if (MAPID === 'snow') {                            // snowy pine: dark green layers with a white snow top
+        deco(cx, 0.6, cz, 0.5, 1.2, 0.5, 0x7a5233);
+        cone(cx, 2.3, cz, 1.7, 2.4, 0x2b6b4b); cone(cx, 3.5, cz, 1.35, 1.9, 0xeaf3f8); cone(cx, 4.5, cz, 0.95, 1.7, 0x2f7a55); cone(cx, 5.2, cz, 0.6, 1.1, 0xffffff);
+        return;
+      }
+      if (MAPID === 'underwater') {                      // coral and tall kelp instead of trees
+        if (((Math.abs(cx) * 7 + Math.abs(cz) * 3) | 0) % 2) {
+          cyl(cx, 2.4, cz, 0.14, 0.24, 4.8, 0x35b86a); cyl(cx + 0.4, 1.7, cz + 0.2, 0.1, 0.18, 3.4, 0x4fd184); cone(cx, 5.0, cz, 0.3, 0.8, 0x6fe29a);
+        } else {
+          cyl(cx, 1.1, cz, 0.35, 0.55, 2.2, 0xff6f91); cone(cx - 0.45, 2.7, cz, 0.45, 1.5, 0xff8fae); cone(cx + 0.45, 2.4, cz + 0.2, 0.4, 1.2, 0xffa070); cone(cx, 3.2, cz - 0.2, 0.35, 1.6, 0xff6f91);
+        }
+        return;
+      }
       if (REAL) {                                        // realistic tree: dark trunk + stacked layers of leaves
         cyl(cx, 1.1, cz, 0.2, 0.32, 2.2, 0x5a4029);
         cone(cx, 2.5, cz, 1.9, 2.4, 0x2d5a34);
@@ -205,6 +243,7 @@
       parapet(cx, cz, w, d, h, { edge: side, c: c, w: sw + 0.5 });
     }
     const flipSide = { '+x': '-x', '-x': '+x', '+z': '-z', '-z': '+z' };
+    let WALLC = null;      // per-map wall colours [neutral, blue half, red half, cap] (null = the normal colours)
     function zoneBuildingColor(z) { return Math.abs(z) < 5 ? 0xc9d0dc : (z > 0 ? 0x6f9be0 : 0xe0806b); }
 
     /* Everything is placed on the "blue" half (z > 0) and mirrored onto the red half,
@@ -213,8 +252,10 @@
       [[x, z], [-x, -z]].forEach(function (p) {
         const zone = Math.abs(p[1]) < 10 ? 0 : (p[1] > 0 ? 1 : 2);   // 0 neutral, 1 blue half, 2 red half
         if (kind === 'wall') {
-          const c = zone === 1 ? 0x5b8fe0 : (zone === 2 ? 0xe0735b : 0xc4ccd8);
-          solid(p[0], p[1], w, d, h, c, 0xeef2f7, 'wall');
+          const c = WALLC ? WALLC[zone] : (zone === 1 ? 0x5b8fe0 : (zone === 2 ? 0xe0735b : 0xc4ccd8));
+          solid(p[0], p[1], w, d, h, c, WALLC ? WALLC[3] : 0xeef2f7, 'wall');
+        } else if (kind === 'ice') {
+          solid(p[0], p[1], w, d, h, 0xbfe3f5, 0xffffff, 'tower');
         } else if (kind === 'crate') {
           solid(p[0], p[1], w, d, h, 0xd9a05b, 0xf0c98a, 'crate');
         } else if (kind === 'tower') {
@@ -417,10 +458,82 @@
       [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40, 0x5fe6ff); });
     }
 
-    if (MAPID === 'rooftops') buildRooftops(); else if (MAPID === 'castle') buildCastle(); else if (MAPID === 'jungle') buildJungle(); else if (MAPID === 'space') buildSpace(); else buildPark();
+    /* Snowy Village: an ice fort in the middle, wooden cabins with snowy roofs (stairs up), snow walls, ice pillars, snowmen, pine trees. */
+    function buildSnow() {
+      STAIR_COL = 0xe3edf5; RAIL_COL = 0xf6fafd;
+      WALLC = [0xdfe8f0, 0x9cc3ee, 0xeeb3a8, 0xffffff];
+      const ICE = 0xbfe3f5, SNOWCAP = 0xffffff;
+      // ice fort in the middle (four doorways, same shape as the park centre so every route stays open)
+      solid(-4.5, -7, 5, 1, 3.2, ICE, SNOWCAP, 'wall'); solid(4.5, -7, 5, 1, 3.2, ICE, SNOWCAP, 'wall');
+      solid(-4.5, 7, 5, 1, 3.2, ICE, SNOWCAP, 'wall');  solid(4.5, 7, 5, 1, 3.2, ICE, SNOWCAP, 'wall');
+      solid(-7, -4.5, 1, 5, 3.2, ICE, SNOWCAP, 'wall'); solid(-7, 4.5, 1, 5, 3.2, ICE, SNOWCAP, 'wall');
+      solid(7, -4.5, 1, 5, 3.2, ICE, SNOWCAP, 'wall');  solid(7, 4.5, 1, 5, 3.2, ICE, SNOWCAP, 'wall');
+      deco(0, 0.03, 0, 13, 0.06, 13, 0xcfeaf7);                                   // the frozen floor inside
+      // snowman in the middle of the fort (cover) + two snow blocks
+      solid(0, 0, 1.6, 1.6, 1.4, 0xf4f8fb, SNOWCAP, 'wall'); sphere(0, 1.95, 0, 0.55, 1, 0xffffff); cone(0, 1.95, -0.6, 0.1, 0.5, 0xff8a1f);
+      solid(-3.5, 3, 1.6, 1.6, 0.9, 0xe6eff6, SNOWCAP, 'wall'); solid(3.5, -3, 1.6, 1.6, 0.9, 0xe6eff6, SNOWCAP, 'wall');
+      // two wooden cabins on each half (the red half is the mirror of the blue half). Snow on the roofs!
+      [[-16, 9, 8, 6, 2.4, '+x', 9], [16, 19, 7, 6, 2.88, '-x', 19]].forEach(function (b) {
+        [[1, 0], [-1, 1]].forEach(function (m) {
+          const sgn = m[0], flip = m[1];
+          building(b[0] * sgn, b[1] * sgn, b[2], b[3], b[4], 0xa9744b, SNOWCAP, flip ? flipSide[b[5]] : b[5], b[6] * sgn);
+        });
+      });
+      // ice pillars, snow walls, a snow bank, crates
+      both(-6, 17, 1.4, 1.4, 3.4, 'ice'); both(6, 17, 1.4, 1.4, 3.4, 'ice');
+      both(-10, 22, 5, 1, 2.2, 'wall'); both(9, 22, 4, 1, 2.2, 'wall');
+      both(-8, 12, 5, 1, 1.0, 'wall');
+      both(-24, 16, 1.6, 1.6, 0.9, 'crate'); both(-22.4, 16, 1.6, 1.6, 0.9, 'crate');
+      both(23, 8, 1.6, 1.6, 0.9, 'crate'); both(23, 9.6, 1.6, 1.6, 0.9, 'crate');
+      both(-9, 7, 1.6, 1.6, 0.9, 'crate'); both(12, 14, 1.6, 1.6, 0.9, 'crate');
+      // snowmen scattered around (solid, so they work as cover)
+      [[4, 10], [-13, 18]].forEach(function (q) {
+        [[q[0], q[1]], [-q[0], -q[1]]].forEach(function (p) {
+          solid(p[0], p[1], 1.4, 1.4, 1.3, 0xf4f8fb, SNOWCAP, 'wall');
+          sphere(p[0], 1.8, p[1], 0.5, 1, 0xffffff); cone(p[0], 1.8, p[1] - 0.55, 0.09, 0.45, 0xff8a1f);
+        });
+      });
+      // pine trees that block the way
+      both(-25, 3, 1, 1, 5, 'tree'); both(26, -4, 1, 1, 5, 'tree'); both(-12, 14, 1, 1, 5, 'tree');
+      both(5, 24, 1, 1, 5, 'tree'); both(-20, 24, 1, 1, 5, 'tree'); both(19, 3, 1, 1, 5, 'tree');
+      // frozen ponds (just for looks - the whole village is slippery!)
+      deco(14, 0.035, 4, 8, 0.05, 6, 0xaee0f2); deco(-14, 0.035, -4, 8, 0.05, 6, 0xaee0f2);
+    }
+
+    /* Underwater Base: a sunken ship in the middle (stairs at both ends), glass-dome huts with coral roofs, bulkhead walls, treasure chests. */
+    function buildUnderwater() {
+      STAIR_COL = 0xc9b47a; RAIL_COL = 0x6fd6e8;
+      WALLC = [0x4aa8b8, 0x3d7fd0, 0xd06a78, 0xbff4ff];
+      const WOOD = 0x8a5a33, DECK = 0xa3703f;
+      // the ship: a long deck you can climb on, with a rail along both sides and stairs at both ends
+      solid(0, 0, 14, 5, 2.4, WOOD, 0xc08a52, 'wall', 0, true);
+      stairs(7, 0, 1, 0, 3, 10, STAIR_COL); stairs(-7, 0, -1, 0, 3, 10, STAIR_COL);
+      solid(0, 2.1, 14, 0.4, 3.3, DECK, undefined, 'wall', 2.4); solid(0, -2.1, 14, 0.4, 3.3, DECK, undefined, 'wall', 2.4);
+      deco(0, 2.4 + 3, 0, 0.22, 6, 0.22, 0x5a3a1e); deco(1.3, 2.4 + 3.6, 0, 2.4, 2.4, 0.06, 0xf4ead0);        // mast and sail (looks only)
+      deco(0, 0.03, 0, 15, 0.06, 7, 0xe3d49a);                                                                  // sand around the ship
+      // glass-dome huts with coral roofs (two on each half)
+      [[-16, 9, 8, 6, 2.4, '+x', 9], [16, 19, 7, 6, 2.4, '-x', 19]].forEach(function (b) {
+        [[1, 0], [-1, 1]].forEach(function (m) {
+          const sgn = m[0], flip = m[1];
+          building(b[0] * sgn, b[1] * sgn, b[2], b[3], b[4], zoneBuildingColor(b[1] * sgn) === 0xc9d0dc ? 0x4aa8b8 : (b[1] * sgn > 0 ? 0x3d7fd0 : 0xd06a78), 0xff8fae, flip ? flipSide[b[5]] : b[5], b[6] * sgn);
+        });
+      });
+      both(-6, 17, 6, 1, 2.6, 'wall'); both(9, 12, 4, 1, 2.6, 'wall');
+      both(0, 21, 5, 1, 1.0, 'crate');
+      both(-24, 14, 1.6, 1.6, 0.9, 'crate'); both(-22.4, 14, 1.6, 1.6, 0.9, 'crate');
+      both(22, 6, 1.6, 1.6, 0.9, 'crate'); both(22, 7.6, 1.6, 1.6, 0.9, 'crate');
+      both(-4, 8, 1.6, 1.6, 0.9, 'crate'); both(13, 24, 1.6, 1.6, 0.9, 'crate');
+      both(-15, 26, 2, 2, 3.5, 'tower'); both(15, 4, 2, 2, 3.5, 'tower');
+      // big coral and kelp that block the way
+      both(-25, 3, 1, 1, 5, 'tree'); both(26, -4, 1, 1, 5, 'tree'); both(-12, 14, 1, 1, 5, 'tree'); both(6, 24, 1, 1, 5, 'tree');
+      // glowing blue floor strips (like landing lights)
+      [-1, 1].forEach(function (sg) { deco(sg * 11, 0.05, 0, 0.25, 0.04, 40, 0x7fe6ff); });
+    }
+
+    if (MAPID === 'snow') buildSnow(); else if (MAPID === 'underwater') buildUnderwater(); else if (MAPID === 'rooftops') buildRooftops(); else if (MAPID === 'castle') buildCastle(); else if (MAPID === 'jungle') buildJungle(); else if (MAPID === 'space') buildSpace(); else buildPark();
 
     // ---- decoration (no collision): base pads, flags, ring of trees outside ----
-    const PADS = MAPID === 'space' ? [0x2d4f93, 0x93392f] : (MAPID === 'jungle' ? [0x9bbbe0, 0xe0a898] : [0xa9cdff, 0xffb4a2]);
+    const PADS = MAPID === 'underwater' ? [0x7fb0ff, 0xff9d8f] : MAPID === 'space' ? [0x2d4f93, 0x93392f] : (MAPID === 'jungle' ? [0x9bbbe0, 0xe0a898] : [0xa9cdff, 0xffb4a2]);
     deco(0, 0.03, 25.5, 20, 0.06, 9, PADS[0]);
     deco(0, 0.03, -25.5, 20, 0.06, 9, PADS[1]);
     [[1, 0x2f86ff], [-1, 0xff5a3c]].forEach(function (t) {
@@ -428,7 +541,7 @@
       deco(-12, 2.5, z, 0.2, 5, 0.2, 0xdddddd); deco(-11.2, 4.4, z, 1.6, 1.0, 0.06, t[1]);
       deco(12, 2.5, z, 0.2, 5, 0.2, 0xdddddd);  deco(12.8, 4.4, z, 1.6, 1.0, 0.06, t[1]);
     });
-    const RING = THEME.sky && THEME.sky.trees === false ? 0 : (MAPID === 'jungle' ? 40 : 26);
+    const RING = THEME.sky && THEME.sky.trees === false ? 0 : (MAPID === 'jungle' ? 40 : (MAPID === 'underwater' ? 34 : 26));
     for (let i = 0; i < RING; i++) {
       const a = (i / RING) * Math.PI * 2;
       const edge = 35 + (i % 3) * 3;                                   // distance of the tree from the middle, measured to a square
@@ -462,12 +575,12 @@
         const side = i % 4, t = rr(-34, 34), off = rr(32.5, 39);
         const x = side < 2 ? t : (side === 2 ? off : -off), z = side < 2 ? (side === 0 ? off : -off) : t;
         if (i % 5 === 0) { sphere(x, 0.45, z, rr(0.5, 0.9), 0.65, 0x9aa5b8); }
-        else { sphere(x, 0.55, z, rr(0.7, 1.2), 0.8, [0x2f9a4e, 0x3bb35c, 0x57c46c][i % 3]); if (i % 2) sphere(x + 0.7, 0.4, z + 0.3, 0.55, 0.8, 0x3bb35c); }
+        else { sphere(x, 0.55, z, rr(0.7, 1.2), 0.8, (THEME.bush || [0x2f9a4e, 0x3bb35c, 0x57c46c])[i % 3]); if (i % 2) sphere(x + 0.7, 0.4, z + 0.3, 0.55, 0.8, (THEME.bush || [0, 0, 0x3bb35c])[2]); }
       }
       // far hills (a ring of soft green and blue hills so the world has a horizon)
       for (let i = 0; !NIGHT && i < 16; i++) {
         const a = (i / 16) * Math.PI * 2 + rr(-0.1, 0.1), r = rr(78, 96), big = rr(14, 26);
-        sphere(Math.cos(a) * r, 0, Math.sin(a) * r, big, rr(0.45, 0.8), i % 3 === 0 ? 0x6fb0a8 : (i % 3 === 1 ? 0x5fb56a : 0x7ac07a));
+        sphere(Math.cos(a) * r, 0, Math.sin(a) * r, big, rr(0.45, 0.8), THEME.hills ? THEME.hills[i % 3] : (i % 3 === 0 ? 0x6fb0a8 : (i % 3 === 1 ? 0x5fb56a : 0x7ac07a)));
       }
     }
 
@@ -526,7 +639,7 @@
         c2.fillStyle = THEME.fancyBase; c2.fillRect(0, 0, S, S);
         for (let i = 0; i < 2600; i++) {                                // soft grass patches (or asphalt patches in the city)
           const g = Math.random();
-          c2.fillStyle = THEME.flowers ? (g < 0.4 ? 'rgba(98,176,84,.55)' : (g < 0.8 ? 'rgba(150,214,118,.5)' : 'rgba(70,150,76,.45)')) : (g < 0.4 ? 'rgba(110,116,126,.45)' : (g < 0.8 ? 'rgba(170,176,186,.4)' : 'rgba(90,96,106,.4)'));
+          c2.fillStyle = THEME.patch ? (g < 0.4 ? THEME.patch[0] : (g < 0.8 ? THEME.patch[1] : THEME.patch[2])) : THEME.flowers ? (g < 0.4 ? 'rgba(98,176,84,.55)' : (g < 0.8 ? 'rgba(150,214,118,.5)' : 'rgba(70,150,76,.45)')) : (g < 0.4 ? 'rgba(110,116,126,.45)' : (g < 0.8 ? 'rgba(170,176,186,.4)' : 'rgba(90,96,106,.4)'));
           const w = 6 + Math.random() * 26, h = 4 + Math.random() * 14;
           c2.fillRect(Math.random() * S, Math.random() * S, w, h);
         }
@@ -582,7 +695,7 @@
         /* clouds: white puffs high in the sky that drift slowly round the arena */
         const cp = [], tmpC = new T.Color(0xffffff);
         const cl = [];
-        for (let i = 0; !NIGHT && i < 9; i++) {
+        for (let i = 0; !NIGHT && MAPID !== 'underwater' && i < 9; i++) {
           const a = Math.random() * Math.PI * 2, r = 55 + Math.random() * 50, y = 42 + Math.random() * 14;
           for (let j = 0; j < 4; j++) cl.push([Math.cos(a) * r + (j - 1.5) * 4.5, y + (j % 2) * 1.2, Math.sin(a) * r + Math.random() * 3, 4 + Math.random() * 2.5]);
         }

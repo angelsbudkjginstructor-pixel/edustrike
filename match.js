@@ -58,6 +58,7 @@
 
   /* ---------- the "G" object the bot brains talk to ---------- */
   const G = {
+    rbAct: function (b, kind) { return M && M.rb ? M.rb.act(b, kind) : false; },     // a bot does its rescue / plant / defuse through the referee's rules
     castShot: function (shooter, ox, oy, oz, dx, dy, dz, range, radiusMul) {
       let bt = world.rayWorld(ox, oy, oz, dx, dy, dz, range), best = null, head = false;
       const dxz2 = dx * dx + dz * dz;

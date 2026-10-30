@@ -129,3 +129,25 @@ An old saved "Fancy" setting is treated as Ultra.
 - Players who are tagged come back after a few seconds. If the hostage carrier is tagged, the hostage waits for another Blue player.
 - Bots play the missions too (a few go for the objective, the rest fight, guard or hunt the carrier).
 - Sounds: your `sfx-bombtick.mp3`, `sfx-bombfast.mp3` (last 5 seconds) and `sfx-bomb.mp3` (explosion) - set in `ES.SOUND_FILES` in `js/config.js`. The rules are in `js/rb.js`.
+
+## Stage 5D - two new maps, a song for every map, and a special effect on every map
+
+**New maps:** ❄️ Snowy Village (ice fort, snowy cabins you can climb, snowmen, pine trees) and 🌊 Underwater Base (a sunken ship you can climb, coral huts, kelp). Both work in solo, class matches and Rescue & Bomb. They appear automatically in the solo map list and the teacher's map list.
+
+**Songs:** every map now has its own song (`music-park.mp3`, `music-castle.mp3`, `music-snow.mp3`, `music-underwater.mp3` joined the old ones). They are small (about 0.26 - 0.5 MB each) and a song is only downloaded when its map is played. To swap a song, upload a new mp3 with the same file name (or change the name in `config.js` -> `ES.MUSIC_FILES.byMap`).
+
+**Map effects** (shown on the "Ready" screen and as a tip a few seconds after GO). Each map has floating particles (one cheap Points object, fewer dots on Low graphics) and one small rule for YOUR player:
+
+| Map | Effect |
+|---|---|
+| 🌳 Park | 🦋 Bouncy Grass - you jump 25% higher, butterflies and petals float around |
+| 🏙️ City Rooftops | 💨 City Rush - you run 10% faster, wind-blown paper streams past |
+| 🏰 Castle | 🦘 Knight's Leap - DOUBLE JUMP (press Space again in the air), torch embers rise |
+| 🌴 Jungle Ruins | 🍃 Leaf Glide - hold Space while falling to float down slowly, fireflies |
+| 🚀 Space Station | 🌌 Low Gravity - big floaty jumps, star dust |
+| ❄️ Snowy Village | ❄️ Slippery Ice - you slide when you stop, falling snow |
+| 🌊 Underwater Base | 🫧 Swim Mode - floaty jumps, slower swimming, bubbles, blue fog |
+
+All the numbers are in one table, `ES.MAP_FX` in `js/world.js`, so they are easy to tune. The bots just walk normally.
+
+Fix in this stage: bots in a class Rescue & Bomb match can now finish their missions (the referee page was missing the "bot did it" link).

@@ -178,7 +178,7 @@
       const goal = rbOn(G) ? rbGoal(G, b) : null;
       if (!goal || goal.kind !== b.objKind || b.alert > 2.2) { b.state = 'roam'; b.objKind = ''; b.roleT = 0; return; }   // the job changed, or somebody is shooting at us: stop
       if (b.ansT <= 0) {
-        if (rnd() < D.ansAcc) { G.rbAct(b, b.objKind); b.state = 'roam'; b.objKind = ''; }   // got it right!
+        if (rnd() < D.ansAcc) { if (G.rbAct) G.rbAct(b, b.objKind); b.state = 'roam'; b.objKind = ''; }   // got it right!
         else b.ansT = D.ansTime * 0.7;                                                      // wrong - try another question
       }
       return;
