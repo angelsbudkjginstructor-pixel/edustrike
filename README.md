@@ -162,3 +162,12 @@ A new game mode, in solo (vs bots) and in class matches. Choose **🚩 Capture t
 - **Speed:** no new image or sound files (about 10 KB of code). Measured on a software renderer: about 0.1 ms more per game step, about 20 more draw calls and 2-3 thousand more triangles. Shadows (High / Ultra) follow the player, and the ground picture is capped so the long arena does not need a huge texture.
 - **Files:** `js/ctf.js` (rules, shared by the game and the teacher's referee page), `js/world.js` (`opts.ctf` = the long arena, `world.flagSpots`), `js/bots.js`, `js/game.js`, `js/match.js`.
 - Numbers (grab distance, 10 seconds, capture circle size) are in `ES.CTF` at the top of `js/ctf.js`.
+
+## Stage 6 - graphics upgrade
+- **All levels (free):** nicer sky colours, soft shading baked into the buildings, more detailed soldiers (backpack, belt, boots, helmet rim) and guns (sight, stock, rails). Low and Medium got a few more shapes, no extra effects.
+- **High:** more detailed realistic soldiers and rifle (handguard, scope, rails, vest straps, pouches).
+- **Ultra Realism:** one extra file, `js/ultra.js` (about 16 KB), downloaded ONLY when a student picks Ultra. It adds sky reflections on guns and helmets, a soft glow on bright things, camera-like highlights and richer colour, floating dust, smoke puffs where shots land, and a muzzle light when you fire.
+- Safety: if a computer cannot do it, or the file cannot load, the game quietly shows the normal High picture. If the game is slow, auto step-down to High removes all of it.
+
+## Waiting-room song
+- `music-lobby.mp3` (Aylex – “Born to Win”, free to use with credit from freetouse.com; credit is shown on the waiting screen; compressed to about 1.5 MB) plays on the student "Pick your team" screen, fades in, loops, follows the Music on/off and volume settings, and fades out when the match starts or the student leaves. It is only downloaded when a student reaches that screen. Change the file name in `ES.MUSIC_FILES.lobby` (config.js) to swap the song; delete that line to turn it off.

@@ -69,7 +69,35 @@
     });
   }
 
+  /* ---------- waiting-room song ----------
+     Plays only while a student sits on the "Pick your team" screen. It fades in, loops, follows the Music on/off and volume settings,
+     and fades out as soon as the match starts, the student leaves, or the room closes.
+     It streams from one <audio> element (nothing big is kept in memory) and the file is only downloaded when a student reaches this screen.
+     SAFETY CHECKS: every step is in try/catch; if the browser blocks sound or the file is missing, the screen simply stays quiet. */
+  let song = null, songBad = false;                                                          // songBad: the file could not load, so stay quiet
+  function songLevel() { const s = ES.settings || {}; return s.music === false ? 0 : Math.max(0, Math.min(1, (s.musicVol === undefined ? 0.6 : s.musicVol))) * 0.7; }
+  function songSync() {
+    try {
+      const file = (ES.MUSIC_FILES || {}).lobby;
+      const want = !!file && songLevel() > 0 && document.body.dataset.screen === 'room' && !$('room-wait').classList.contains('hidden') && !document.hidden;
+      if (want && !song && !songBad) {
+        const el = song = new Audio(file); el.loop = true; el.preload = 'auto'; el.volume = 0;
+        el.addEventListener('error', function () { if (song === el) { songBad = true; song = null; } });      // (only a real load failure counts, not our own clean-up)
+      }
+      if (!song) return;
+      if (want) {
+        if (song.paused) { const p = song.play(); if (p && p.catch) p.catch(function () { /* browser wants a click first: it will start after the next sync */ }); }
+        song.volume = Math.min(songLevel(), song.volume + 0.04);                               // fade in (about 2 seconds)
+        if (song.volume > songLevel()) song.volume = songLevel();
+      } else {
+        song.volume = Math.max(0, song.volume - 0.12);                                          // fade out (about 0.5 seconds), then stop and free it
+        if (song.volume <= 0) { song.pause(); song.removeAttribute('src'); song.load(); song = null; }
+      }
+    } catch (e) { /* the song is optional */ }
+  }
+
   function init() {
+    setInterval(songSync, 100);
     $('room-join').addEventListener('click', join);
     $('room-code-in').addEventListener('input', function () { this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); });
     $('room-code-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') join(); });
@@ -80,5 +108,5 @@
   }
 
   function showWait() { step('wait'); say(''); render(); }
-  ES.lobby = { init: init, show: show, showWait: showWait, leave: leave, onEnd: null };
+  ES.lobby = { init: init, show: show, showWait: showWait, leave: leave, onEnd: null, songInfo: function () { return song ? { playing: !song.paused, volume: +song.volume.toFixed(2), t: +song.currentTime.toFixed(1) } : null; } };
 })();

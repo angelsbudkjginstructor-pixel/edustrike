@@ -26,6 +26,25 @@
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
   let toastT = 0, closeTimer = 0, relockTimer = 0;
   let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
+  let ultraCtx = null, ultraU = null, ultraLoading = false;      // Ultra-only extras (js/ultra.js)
+
+  /* Ultra realism: load js/ultra.js once (from the same folder as this file) and switch it on. Any problem = the normal High picture. */
+  function ultraTry() {
+    if (G.level !== 'ultra' || !ultraCtx || ultraU) return;
+    if (ES.ultra && ES.ultra.attach) { try { ultraU = ES.ultra.attach(ultraCtx); } catch (e) { ultraU = null; } return; }
+    if (ultraLoading) return;
+    ultraLoading = true;
+    try {
+      let base = '';
+      const ss = document.getElementsByTagName('script');
+      for (let i = 0; i < ss.length; i++) { const m = /^(.*)game\.js(\?.*)?$/.exec(ss[i].getAttribute('src') || ''); if (m) { base = m[1]; break; } }
+      const s = document.createElement('script'); s.src = base + 'ultra.js';
+      s.onload = function () { ultraLoading = false; if (G.active && G.level === 'ultra' && !ultraU && ES.ultra) { try { ultraU = ES.ultra.attach(ultraCtx); } catch (e) { ultraU = null; } } };
+      s.onerror = function () { ultraLoading = false; };           // offline or missing file: stay on High-style graphics
+      document.head.appendChild(s);
+    } catch (e) { ultraLoading = false; }
+  }
+  function ultraOff() { if (ultraU) { try { ultraU.dispose(); } catch (e) { /* ignore */ } ultraU = null; } ultraCtx = null; }
   let MFX = null, FXD = null;           // map effect: MFX = the floating particles (3D), FXD = the effect numbers for this map (ES.MAP_FX)
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
   let CF = null, CFV = null;            // Capture the Flag: CF = the rules engine (ctf.js), CFV = the 3D flags (null in other modes)
@@ -72,16 +91,17 @@
     scene = new T.Scene();
     const mapId = (opts && opts.net && opts.net.map) || st.map;
     const SKY = (ES.MAP_SKY && ES.MAP_SKY[mapId]) || null;       // night / jungle sky, or null = normal sunny sky
-    const sc = document.createElement('canvas'); sc.width = 2; sc.height = 128;
-    const sx = sc.getContext('2d'), grad = sx.createLinearGradient(0, 0, 0, 128);
+    const sc = document.createElement('canvas'); sc.width = 2; sc.height = 256;
+    const sx = sc.getContext('2d'), grad = sx.createLinearGradient(0, 0, 0, 256);
     if (SKY) { grad.addColorStop(0, SKY.top); grad.addColorStop(0.55, SKY.mid); grad.addColorStop(1, SKY.bot); }
-    else { grad.addColorStop(0, '#5db7ff'); grad.addColorStop(0.6, '#bfe6ff'); grad.addColorStop(1, '#eaf7ff'); }
-    sx.fillStyle = grad; sx.fillRect(0, 0, 2, 128);
+    else { grad.addColorStop(0, '#2f8cf0'); grad.addColorStop(0.32, '#58b0ff'); grad.addColorStop(0.62, '#a6dbff'); grad.addColorStop(0.86, '#e0f3ff'); grad.addColorStop(1, '#fff3da'); }   // deep blue on top, a warm haze on the horizon
+    sx.fillStyle = grad; sx.fillRect(0, 0, 2, 256);
     const skyTex = new T.CanvasTexture(sc);
     if (T.SRGBColorSpace) skyTex.colorSpace = T.SRGBColorSpace;
     scene.background = skyTex;
     scene.fog = new T.Fog(SKY ? SKY.fog : (gfx.real ? 0xd8e6f0 : 0xcfeaff), (SKY && SKY.fogNear) || (gfx.real ? 45 : 22), SKY && SKY.fogFar ? Math.min(SKY.fogFar, gfx.fog) : gfx.fog);
-    scene.add(new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? (gfx.real ? 2.3 : 1.6) : (gfx.real ? 1.2 : 2.1)));
+    const hemiLight = new T.HemisphereLight(SKY ? SKY.hemiSky : 0xffffff, SKY ? SKY.hemiGround : 0x8fae7a, SKY && SKY.stars ? (gfx.real ? 2.3 : 1.6) : (gfx.real ? 1.2 : 2.1));
+    scene.add(hemiLight);
     const sun = sunLight = new T.DirectionalLight(SKY ? SKY.sun : 0xfff4e0, gfx.real ? 2.2 : 1.6);
     if (SKY && SKY.stars) {                                       // a cheap field of stars (one Points object, 260 dots)
       const sp = new Float32Array(260 * 3);
@@ -119,6 +139,8 @@
     buildEffects();
     buildCrates();
     buildMapFx(world.map);
+    ultraCtx = { T: T, renderer: renderer, scene: scene, camera: camera, sun: sunLight, hemi: hemiLight, sky: SKY, stars: !!(SKY && SKY.stars), wrap: wrap };
+    ultraTry();                                                   // Ultra only: loads the extra realism file (nobody else downloads it)
 
     /* ---- create the fighters ---- */
     ents = [];
@@ -201,6 +223,7 @@
     clearTimeout(closeTimer); clearTimeout(relockTimer);
     removeListeners();
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { /* ignore */ }
+    ultraOff();
     try {
       scene.traverse(function (o) {
         if (o.geometry && !o.userData.shared) o.geometry.dispose();
@@ -297,9 +320,26 @@
         { g: new T.BoxGeometry(0.1, 0.3, 0.02), y: 1.2, z: 0.335, c: tc },                           // team stripe on the backpack
         { g: new T.CapsuleGeometry(0.065, 0.26, 2, 6), rx: Math.PI / 2, x: 0.27, y: 1.18, z: -0.14, c: fat },   // right arm
         { g: new T.SphereGeometry(0.07, 6, 5), x: 0.25, y: 1.13, z: -0.34, c: dark },                // glove
-        { g: new T.BoxGeometry(0.01, 0.01, 0.01), x: 0.25, y: 1.2, z: -0.5, c: dark }                  // (the rifle is a separate model, see buildSoldierGuns)
+        { g: new T.BoxGeometry(0.01, 0.01, 0.01), x: 0.25, y: 1.2, z: -0.5, c: dark },                 // (the rifle is a separate model, see buildSoldierGuns)
+        { g: new T.SphereGeometry(0.035, 6, 5), x: -0.155, y: 1.55, c: skin },                       // ears
+        { g: new T.SphereGeometry(0.035, 6, 5), x: 0.155, y: 1.55, c: skin },
+        { g: new T.BoxGeometry(0.07, 0.34, 0.34), x: -0.14, y: 1.26, c: dark },                      // vest shoulder straps
+        { g: new T.BoxGeometry(0.07, 0.34, 0.34), x: 0.14, y: 1.26, c: dark },
+        { g: new T.BoxGeometry(0.1, 0.11, 0.06), x: 0, y: 1.02, z: -0.19, c: dark },                 // middle ammo pouch
+        { g: new T.CylinderGeometry(0.03, 0.03, 0.1, 8), x: 0.2, y: 1.2, z: -0.2, c: 0x56613f },     // grenade on the vest
+        { g: new T.SphereGeometry(0.06, 6, 5), x: 0.265, y: 1.2, z: -0.27, c: fat2 },                // elbow pad (right)
+        { g: new T.CylinderGeometry(0.1, 0.11, 0.08, 10), y: 1.38, c: fat2 }                         // collar
       ];
       if (ULTRA) parts.push(
+        { g: new T.BoxGeometry(0.1, 0.07, 0.07), x: 0, y: 1.67, z: -0.17, c: dark },                 // night-vision mount on the helmet
+        { g: new T.CylinderGeometry(0.03, 0.03, 0.08, 8), rx: Math.PI / 2, x: 0, y: 1.67, z: -0.24, c: dark },
+        { g: new T.BoxGeometry(0.012, 0.012, 0.14), x: -0.14, y: 1.5, z: -0.12, c: dark },           // headset microphone
+        { g: new T.BoxGeometry(0.1, 0.06, 0.02), x: -0.28, y: 1.27, z: -0.01, c: tc },               // team patch on the shoulder
+        { g: new T.CylinderGeometry(0.05, 0.05, 0.22, 8), x: 0.12, y: 1.15, z: 0.35, c: 0x4a5a6a },  // water bottle on the backpack
+        { g: new T.BoxGeometry(0.14, 0.1, 0.09), x: -0.22, y: 0.88, z: 0.02, c: dark },              // hip pouches
+        { g: new T.BoxGeometry(0.14, 0.1, 0.09), x: 0.22, y: 0.88, z: 0.02, c: dark },
+        { g: new T.BoxGeometry(0.03, 0.03, 0.03), x: 0.22, y: 1.13, z: -0.4, c: dark },              // gloved fingers
+        { g: new T.BoxGeometry(0.03, 0.03, 0.03), x: 0.28, y: 1.13, z: -0.4, c: dark },
         { g: new T.BoxGeometry(0.16, 0.08, 0.2), x: -0.3, y: 1.4, c: tc },                           // shoulder pads
         { g: new T.BoxGeometry(0.16, 0.08, 0.2), x: 0.3, y: 1.4, c: tc },
         { g: new T.CylinderGeometry(0.008, 0.008, 0.4, 4), x: -0.12, y: 1.62, z: 0.3, c: dark },     // radio antenna
@@ -307,13 +347,17 @@
       shared['rbody' + team] = mergeParts(parts);
       shared['rarm' + team] = mergeParts([                                                          // left arm swings: pivot at the shoulder
         { g: new T.CapsuleGeometry(0.065, 0.26, 2, 6), y: -0.2, c: fat },
-        { g: new T.SphereGeometry(0.07, 6, 5), y: -0.42, c: dark }
+        { g: new T.SphereGeometry(0.07, 6, 5), y: -0.42, c: dark },
+        { g: new T.SphereGeometry(0.06, 6, 5), y: -0.2, z: 0.03, c: fat2 }                           // elbow pad
       ]);
     });
     shared.rleg = mergeParts([                                                                      // legs swing: pivot at the hip
       { g: new T.CapsuleGeometry(0.095, 0.4, 2, 6), y: -0.3, c: fat },
       { g: new T.BoxGeometry(0.15, 0.12, 0.05), y: -0.44, z: -0.08, c: dark },                      // knee pad
-      { g: new T.BoxGeometry(0.2, 0.16, 0.32), y: -0.74, z: -0.04, c: boot }                        // boot
+      { g: new T.BoxGeometry(0.2, 0.16, 0.32), y: -0.74, z: -0.04, c: boot },                       // boot
+      { g: new T.BoxGeometry(0.21, 0.03, 0.34), y: -0.83, z: -0.04, c: 0x0b0d10 },                  // boot sole
+      { g: new T.BoxGeometry(0.1, 0.12, 0.05), x: 0.1, y: -0.2, z: -0.02, c: dark },                // thigh pocket
+      { g: new T.CylinderGeometry(0.11, 0.1, 0.1, 8), y: -0.62, c: fat2 }                           // trouser cuff
     ]);
     shared.rMat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.08 });
   }
@@ -331,13 +375,23 @@
         { x: 0, y: 1.86, z: 0, w: 0.05, h: 0.18, d: 0.05, c: c },
         { x: -0.36, y: 1.1, z: -0.05, w: 0.14, h: 0.5, d: 0.14, c: c },
         { x: 0.36, y: 1.1, z: -0.12, w: 0.14, h: 0.4, d: 0.3, c: c },
-        { x: 0.3, y: 1.08, z: -0.05, w: 0.1, h: 0.12, d: 0.1, c: 0x2a2f3a }
+        { x: 0.3, y: 1.08, z: -0.05, w: 0.1, h: 0.12, d: 0.1, c: 0x2a2f3a },
+        { x: 0, y: 1.1, z: 0.22, w: 0.4, h: 0.44, d: 0.14, c: 0x2b3550 },                  // backpack
+        { x: 0, y: 1.3, z: -0.18, w: 0.36, h: 0.08, d: 0.03, c: 0xf2f4f8 },                // chest stripe
+        { x: 0, y: 0.82, z: -0.19, w: 0.1, h: 0.07, d: 0.02, c: 0xffd23f },                // belt buckle
+        { x: -0.36, y: 1.38, z: -0.05, w: 0.2, h: 0.07, d: 0.2, c: 0x2b3550 },             // shoulder pads
+        { x: 0.36, y: 1.38, z: -0.05, w: 0.2, h: 0.07, d: 0.2, c: 0x2b3550 },
+        { x: 0, y: 1.82, z: 0, w: 0.4, h: 0.06, d: 0.38, c: 0xc9ced8 }                    // helmet rim
       ]);
     });
-    shared.leg = new T.BoxGeometry(0.18, 0.8, 0.2); shared.leg.translate(0, -0.4, 0);
+    shared.leg = mergeBoxes([                                                    // leg + knee pad + boot, one shape (hip is the pivot)
+      { x: 0, y: -0.35, z: 0, w: 0.18, h: 0.7, d: 0.2, c: 0x2b3550 },
+      { x: 0, y: -0.3, z: -0.1, w: 0.14, h: 0.12, d: 0.04, c: 0x4a5878 },
+      { x: 0, y: -0.74, z: -0.03, w: 0.22, h: 0.12, d: 0.3, c: 0x15181c }
+    ]);
     shared.blob = new T.CircleGeometry(0.55, 10); shared.blob.rotateX(-Math.PI / 2);
     shared.blobMat = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
-    shared.legMat = new T.MeshLambertMaterial({ color: 0x2b3550 });
+    shared.legMat = new T.MeshLambertMaterial({ vertexColors: true });
     // "?" bubble shown above a bot that is answering a question
     const qc = document.createElement('canvas'); qc.width = qc.height = 64;
     const q2 = qc.getContext('2d');
@@ -426,7 +480,9 @@
       ['b', 0.045, 0.1, 0.06, 0x252a31, 0, -0.14, 0.08], ['b', 0.03, 0.06, 0.12, 0x15181c, 0, 0.1, -0.1]] },
     rifle: { k: 1, muzzle: 0, parts: [                             // what a soldier holds with the normal blaster
       ['b', 0.07, 0.1, 0.66, 0x1d2127, 0, 0, -0.24], ['c', 0.018, 0.4, 0x1d2127, 0, 0.02, -0.72], ['b', 0.05, 0.16, 0.07, 0x1d2127, 0, -0.12, -0.2],
-      ['b', 0.06, 0.12, 0.22, 0x1d2127, 0, 0.02, 0.16], ['b', 0.03, 0.04, 0.1, 0x22262c, 0, 0.08, -0.32]] }
+      ['b', 0.06, 0.12, 0.22, 0x1d2127, 0, 0.02, 0.16], ['b', 0.03, 0.04, 0.1, 0x22262c, 0, 0.08, -0.32],
+      ['b', 0.062, 0.07, 0.3, 0x2a2f38, 0, 0.0, -0.5], ['c', 0.024, 0.07, 0x15181c, 0, 0.02, -0.93], ['c', 0.022, 0.2, 0x15181c, 0, 0.085, -0.18],
+      ['b', 0.05, 0.012, 0.3, 0x2f343c, 0, 0.06, -0.3], ['b', 0.05, 0.1, 0.05, 0x1d2127, 0, -0.1, -0.02]] }
   };
   function specGeo(sp, k, acc) {                           // one merged soldier-sized model of a gun
     const list = [];
@@ -493,6 +549,13 @@
       mk(0.06, 0.1, 0.2, 0x3a3f33, 0, -0.01, 0.28, false);             // stock
       mk(0.03, 0.04, 0.1, 0x15181c, 0, 0.07, -0.02, true);             // sight
       mk(0.075, 0.018, 0.12, accent, 0, 0.056, -0.2, false);           // team-colour stripe
+      mk(0.05, 0.012, 0.34, 0x2a2f38, 0, 0.062, -0.14, true);          // top rail
+      mk(0.075, 0.03, 0.2, 0x2a2f38, 0, -0.035, -0.32, true);          // lower rail
+      mk(0.05, 0.05, 0.12, 0x15181c, 0, -0.065, -0.4, false);          // fore-grip
+      mk(0.045, 0.012, 0.09, 0x1d2127, 0, -0.075, 0.1, false);         // trigger guard
+      const scope = add(new T.CylinderGeometry(0.024, 0.024, 0.2, 14), 0x15181c, 0, 0.105, -0.02, true); scope.rotation.x = Math.PI / 2;
+      const brake = add(new T.CylinderGeometry(0.02, 0.02, 0.07, 10), 0x1a1d22, 0, 0.012, -0.72, true); brake.rotation.x = Math.PI / 2;
+      const lens = add(new T.CylinderGeometry(0.02, 0.02, 0.006, 14), myTeam() === 0 ? 0x6fd8ff : 0xffa070, 0, 0.105, -0.12, true); lens.rotation.x = Math.PI / 2;
       muzzleZ = -0.74;
     } else {
       mk(0.075, 0.1, 0.38, 0x2a3550, 0, 0, 0);
@@ -500,6 +563,9 @@
       mk(0.04, 0.04, 0.2, 0x1a2035, 0, 0.015, -0.28);
       mk(0.05, 0.12, 0.07, 0x1a2035, 0, -0.1, 0.1);
       mk(0.05, 0.05, 0.03, 0xffe14d, 0, 0.015, -0.39);
+      mk(0.03, 0.05, 0.1, 0x6b7894, 0, 0.075, 0.04);                    // sight
+      mk(0.05, 0.1, 0.1, 0x1a2035, 0, 0.0, 0.26);                       // stock
+      mk(0.082, 0.012, 0.3, 0x4a5878, 0, -0.045, -0.02);                // lower rail
       muzzleZ = -0.46;
     }
     const big = id === 'rocket' || id === 'scatter';
@@ -670,6 +736,7 @@
   };
 
   function burst(x, y, z, color, n) {
+    if (ultraU) ultraU.impact(x, y, z);
     if (gfx.fx) {
       const r = rings[ringI++ % rings.length]; r.life = 0.32; r.mesh.position.set(x, y, z); r.mesh.visible = true; r.mesh.material.color.setHex(color); r.mesh.material.opacity = 0.9; r.mesh.scale.set(1, 1, 1);
       r.mesh.lookAt(camera.position);
@@ -811,6 +878,7 @@
       }
     }
     ES.audio.sfx(bonus ? 'w_' + wid : 'shoot', 0.9);
+    if (ultraU) ultraU.shot();
     muzzle.visible = true; S.muzzleT = 0.05; S.recoil = bonus && W.interval > 0.5 ? 1.8 : 1;
     if (hitAny) {
       S.hitMark = 0.18; S.hitHead = headAny;
@@ -1087,6 +1155,7 @@
     if (!renderer) return;
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+    if (ultraU) ultraU.resize();
   }
   function onBlur() { keys = {}; fireHeld = false; rightDown = false; if (G.active && st.lookMode === 'keys') pause(); }
   function onVis() { if (document.hidden && G.active) pause(); }
@@ -1123,7 +1192,7 @@
     try {
       measureFps(raw);
       if (!S.paused || NET) tick(dt);
-      renderer.render(scene, camera);
+      if (ultraU) { ultraU.update(dt); ultraU.render(); } else renderer.render(scene, camera);
     } catch (err) {
       // A bug must never freeze the whole classroom: log it and keep drawing.
       if (!G.errShown) { G.errShown = true; console.error('EduStrike frame error:', err); }
@@ -1138,6 +1207,7 @@
     if (i <= 0) return;
     const to = ES.GFX_ORDER[i - 1], P = ES.GFX[to];
     G.level = to; G.downgraded = true; fpsTipShown = true; fpsSlowT = 0;
+    ultraOff();                                                    // leaving Ultra: remove glow, reflections, dust and the muzzle light
     try {
       gfx.scale = P.scale; gfx.maxPR = P.maxPR; gfx.sparks = P.sparks; gfx.fog = P.fog; gfx.fx = !!P.fx;
       if (!P.shadows && gfx.shadows) {

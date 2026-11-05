@@ -628,11 +628,19 @@
         const p = g.attributes.position.array, n = g.attributes.normal.array;
         tmp.set(b.color);
         if (REAL) tmp.offsetHSL(0, -0.16, -0.07);                    // calmer, more natural colours than the cartoon look
+        /* BAKED SHADING (costs nothing while playing, it is only a colour per corner): the bottom of every wall is a little darker,
+           tops catch the sun, undersides are dark and every object has its own tiny brightness - so even Low looks like it has light and depth */
+        const hh = b.h || (b.sphere ? b.r * 2 * (b.sy || 1) : 1), flat = hh < 0.5;
+        const jit = 0.95 + 0.1 * (Math.abs(Math.sin(b.cx * 12.9898 + b.cz * 78.233 + b.cy * 3.7)) % 1);
         for (let i = 0; i < p.length; i += 3) {
           const wx = p[i] + b.cx, wy = p[i + 1] + b.cy, wz = p[i + 2] + b.cz;
           pos.push(wx, wy, wz);
           nor.push(n[i], n[i + 1], n[i + 2]);
-          col.push(tmp.r, tmp.g, tmp.b);
+          let k = jit;
+          if (n[i + 1] < -0.5) k *= 0.6;
+          else if (n[i + 1] > 0.6) k *= 1.07;
+          else if (!flat) k *= (0.78 + 0.22 * Math.max(0, Math.min(1, (p[i + 1] + hh / 2) / hh))) * (Math.abs(n[i]) > Math.abs(n[i + 2]) ? 0.94 : 1);
+          col.push(Math.min(1, tmp.r * k), Math.min(1, tmp.g * k), Math.min(1, tmp.b * k));
           if (REAL) {                                                // surface-detail map: projected from the side the face looks at
             const ax = Math.abs(n[i]), ay = Math.abs(n[i + 1]);
             if (ay > 0.6) uvs.push(wx * 0.25, wz * 0.25); else if (ax > 0.6) uvs.push(wz * 0.25, wy * 0.25); else uvs.push(wx * 0.25, wy * 0.25);
@@ -704,6 +712,7 @@
         const c2 = cv.getContext('2d');
         c2.fillStyle = THEME.lowA; c2.fillRect(0, 0, 64, 64);
         c2.fillStyle = THEME.lowB; c2.fillRect(0, 0, 32, 32); c2.fillRect(32, 32, 32, 32);
+        for (let i = 0; i < 70; i++) { c2.fillStyle = i % 2 ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.08)'; c2.fillRect((i * 37) % 64, (i * 53 + 11) % 64, 1 + (i % 3), 1 + ((i >> 1) % 2)); }   // speckle (same 64 pixels, no extra cost)
         tex = new T.CanvasTexture(cv);
         tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.magFilter = T.NearestFilter;
         tex.repeat.set(16, (64 + 2 * ZS) / 4);
@@ -741,6 +750,27 @@
         fx.clouds.frustumCulled = false;
         scene.add(fx.clouds);
       }
+    }
+
+    if (!NOVIS && !FANCY && !NIGHT && MAPID !== 'underwater') {
+      /* LITE clouds: a handful of soft flat shapes high in the sky (one mesh, one draw call) so Low and Medium skies are not empty */
+      const lc = document.createElement('canvas'); lc.width = lc.height = 64;
+      const lx = lc.getContext('2d'), lg = lx.createRadialGradient(32, 32, 2, 32, 32, 32);
+      lg.addColorStop(0, 'rgba(255,255,255,1)'); lg.addColorStop(0.55, 'rgba(255,255,255,.75)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+      lx.fillStyle = lg; lx.fillRect(0, 0, 64, 64);
+      const lp = [], lu = [];
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + 0.3, r = 70 + (i % 3) * 14, y = 38 + (i % 4) * 4;
+        for (let j = 0; j < 3; j++) {
+          const cx = Math.cos(a) * r + (j - 1) * 7, cz = Math.sin(a) * r + (j % 2) * 3, w = 11 + (j === 1 ? 4 : 0), d = 5 + (j === 1 ? 2 : 0), yy = y + (j === 1 ? 0.6 : 0);
+          lp.push(cx - w, yy, cz - d, cx + w, yy, cz - d, cx + w, yy, cz + d, cx - w, yy, cz - d, cx + w, yy, cz + d, cx - w, yy, cz + d);
+          lu.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+        }
+      }
+      const lgeo = new T.BufferGeometry(); lgeo.setAttribute('position', new T.Float32BufferAttribute(lp, 3)); lgeo.setAttribute('uv', new T.Float32BufferAttribute(lu, 2));
+      const ltex = new T.CanvasTexture(lc); if (T.SRGBColorSpace) ltex.colorSpace = T.SRGBColorSpace;
+      fx.lite = new T.Mesh(lgeo, new T.MeshBasicMaterial({ map: ltex, transparent: true, opacity: 0.9, fog: false, depthWrite: false, side: T.DoubleSide }));
+      fx.lite.frustumCulled = false; scene.add(fx.lite);
     }
 
     /* ---------- collisions ---------- */
@@ -1015,7 +1045,7 @@
         for (let i = 0; i < fx.beams.length; i++) fx.beams[i].material.opacity = 0.17 + Math.sin(fx.t * 2 + i) * 0.05;
       },
       /* turn the see-through extras on/off (used when a slow computer drops to faster graphics) */
-      setExtras: function (on) { if (fx.clouds) fx.clouds.visible = on; fx.beams.forEach(function (b) { b.visible = on; }); },
+      setExtras: function (on) { if (fx.lite) fx.lite.visible = !on; if (fx.clouds) fx.clouds.visible = on; fx.beams.forEach(function (b) { b.visible = on; }); },
       fancy: FANCY,
       dispose: function () {
         if (!mesh) return;

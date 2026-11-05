@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 5E - Capture the Flag (long arena)';
+  ES.VERSION = 'Stage 6 - Graphics upgrade (nicer Low/Medium/High, Ultra Realism)';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -33,6 +33,7 @@
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
   ES.MUSIC_FILES = {
     play: 'music-thriller.mp3', gain: 1.0,
+    lobby: 'music-lobby.mp3',       // plays on the student waiting screen ("Pick your team") until the teacher presses START
     /* Want a different song for a map? Upload the mp3 and write its name here, for example:  space: 'music-space.mp3'
        Maps with no file of their own play the normal song at a slightly different speed (see rate below). */
     byMap: { park: 'music-park.mp3', castle: 'music-castle.mp3', rooftops: 'music-rooftops.mp3', jungle: 'music-jungle.mp3', space: 'music-space.mp3',
