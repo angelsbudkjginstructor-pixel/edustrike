@@ -28,6 +28,28 @@
   .t-card h2 { margin: 0 0 6px; font-size: 24px; }
   .t-sub { color: #5a6a88; font-weight: 600; margin: 0 0 8px; }
   .t-open { width: 100%; font-size: 22px; padding: 18px; }
+  .t-season { background: #fff8dc; border: 2px solid #f0c64a; border-radius: 14px; padding: 10px 12px; margin: 12px 0; }
+  .t-season .ts-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
+  .t-season .btn { padding: 7px 12px; font-size: 15px; }
+  .ts-info { color: #6b5a1a; font-weight: 700; font-size: 14px; }
+  #board { position: fixed; inset: 0; z-index: 50; background: radial-gradient(1000px 600px at 50% -10%, #2a5db8 0%, #14305f 50%, #0b1730 100%); color: #fff; overflow: auto; padding: 18px 26px 40px; text-align: center; }
+  #board.hidden { display: none; }
+  .bd-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+  .bd-title { font-size: 40px; font-weight: 900; }
+  .bd-tabs { display: flex; gap: 8px; } .bd-tabs .btn { padding: 8px 16px; font-size: 18px; } .bd-tabs .btn.sel { background: linear-gradient(#ffe48a, #ffc83d); color: #3b2a00; }
+  #bd-banner { font-size: 34px; font-weight: 900; margin: 14px 0 6px; }
+  #bd-awards { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 10px 0 16px; }
+  .bd-aw { background: linear-gradient(#ffe48a, #ffc83d); color: #3b2a00; border-radius: 16px; padding: 10px 20px; font-weight: 900; font-size: 22px; min-width: 190px; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .bd-aw small { display: block; font-size: 17px; font-weight: 800; }
+  #bd-body { max-width: 980px; margin: 0 auto; }
+  .bd-row { display: grid; grid-template-columns: 70px 1fr repeat(4, 110px); align-items: center; gap: 6px; padding: 10px 16px; margin-top: 8px; border-radius: 16px; font-size: 28px; font-weight: 800; text-align: left; background: rgba(255,255,255,.1); }
+  .bd-row.head { background: none; font-size: 17px; opacity: .8; margin-top: 0; padding-top: 0; padding-bottom: 0; }
+  .bd-row > span:nth-child(n+3) { text-align: center; }
+  .bd-row.t0 { border-left: 12px solid #2f86ff; } .bd-row.t1 { border-left: 12px solid #ff5a3c; }
+  .bd-row.g1 { background: linear-gradient(90deg, #ffd23f, #b88a00); color: #2a1d00; } .bd-row.g2 { background: linear-gradient(90deg, #e2e8f0, #8f9bb0); color: #1a2438; } .bd-row.g3 { background: linear-gradient(90deg, #f0b27a, #a0612a); color: #2a1500; }
+  .bd-row.won::after { content: ''; }
+  .bd-empty { font-size: 26px; font-weight: 800; padding: 40px; opacity: .85; }
+  @media (max-width: 800px) { .bd-row { grid-template-columns: 44px 1fr repeat(4, 56px); font-size: 18px; } .bd-title { font-size: 26px; } }
   .r-code { text-align: center; margin: 6px 0; }
   .r-code .big { font: 900 76px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 14px; padding-left: 14px; color: #2f86ff; user-select: text; -webkit-user-select: text; }
   .r-link { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; }
@@ -116,6 +138,10 @@
         <button id="r-close" class="btn red" type="button">Close room</button>
       </div>
       <div class="r-say"><input id="r-say" type="text" maxlength="120" placeholder="Send a message to every student's screen"><button id="r-send" class="btn dark" type="button" style="padding:9px 14px">📣 Send</button></div>
+      <div id="r-season" class="t-season">
+        <div class="ts-row"><b>🏆 Class season:</b> <span id="ts-name"></span> <span id="ts-info" class="ts-info"></span></div>
+        <div class="ts-row"><button id="ts-board" class="btn dark" type="button">📺 Show class board</button><button id="ts-rename" class="btn dark" type="button">✏️ Rename</button><button id="ts-new" class="btn red" type="button">🆕 New season</button><button id="ts-csv" class="btn dark" type="button">📋 Copy table</button></div>
+      </div>
       <div id="r-setup">
         <h3 class="r-h">⚔️ Match settings</h3>
         <div class="r-grid">
@@ -156,6 +182,7 @@
         <div class="l-bar"><span id="l-time">0:00</span><span id="l-score"></span><span id="l-ready"></span></div>
         <div class="r-teams"><div class="r-col" id="l-team0"></div><div class="r-col" id="l-team1"></div></div>
         <div class="r-tools">
+          <button id="r-board" class="btn dark" type="button">📺 Class board</button>
           <button id="r-end" class="btn red" type="button">⏹ End match now</button>
           <button id="r-back" class="btn on hidden" type="button">↩ Back to waiting room</button>
         </div>
@@ -166,6 +193,11 @@
   </div>
 </div>
 
+<div id="board" class="hidden">
+  <div class="bd-top"><div class="bd-title" id="bd-title">🏆 Class Board</div>
+    <div class="bd-tabs"><button id="bd-t-match" class="btn dark" type="button">This match</button><button id="bd-t-season" class="btn dark" type="button">Season</button><button id="bd-close" class="btn red" type="button">✕ Close</button></div></div>
+  <div id="bd-banner"></div><div id="bd-awards"></div><div id="bd-body"></div>
+</div>
 <script src="three.min.js"></script>
 <script src="config.js"></script>
 <script src="questions.js"></script>
@@ -180,6 +212,7 @@
 <script src="ctf.js"></script>
 <script src="boss.js"></script>
 <script src="match.js"></script>
+<script src="season.js"></script>
 <script src="teacher.js"></script>
 <script src="teacher-room.js"></script>
 </body>

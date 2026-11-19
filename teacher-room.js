@@ -130,8 +130,73 @@
       });
     });
     const over = i.phase === 'ended';
+    if (over) { const sm = ES.match.summary(); if (sm && ES.season.add(sm)) refreshSeason(); }      // the finished match is added to the season (once)
     $('r-end').classList.toggle('hidden', over); $('r-back').classList.toggle('hidden', !over);
   }
+
+  /* ---------- class season + class board (see season.js) ---------- */
+  function refreshSeason() {
+    const d = ES.season.get(), top = ES.season.ranking()[0];
+    $('ts-name').textContent = d.name;
+    $('ts-info').textContent = d.matches + (d.matches === 1 ? ' match' : ' matches') + (top ? '  ·  🥇 ' + top.name + ' (' + top.pts + ' pts)' : '  ·  no matches yet');
+  }
+  let boardTab = 'match', boardTimer = 0;
+  function cell(t, cls) { const sp = document.createElement('span'); if (cls) sp.className = cls; sp.textContent = t; return sp; }
+  function boardRow(cols, cls) { const r = document.createElement('div'); r.className = 'bd-row' + (cls ? ' ' + cls : ''); cols.forEach(function (c) { r.appendChild(cell(c)); }); return r; }
+  function renderBoard() {
+    const body = $('bd-body'), aw = $('bd-awards'), ban = $('bd-banner');
+    body.innerHTML = ''; aw.innerHTML = ''; ban.textContent = '';
+    $('bd-t-match').classList.toggle('sel', boardTab === 'match'); $('bd-t-season').classList.toggle('sel', boardTab === 'season');
+    const medal = function (i) { return ['🥇', '🥈', '🥉'][i] || String(i + 1); };
+    if (boardTab === 'season') {
+      const d = ES.season.get(), list = ES.season.ranking();
+      $('bd-title').textContent = '🏆 ' + d.name;
+      ban.textContent = d.matches + (d.matches === 1 ? ' match played' : ' matches played');
+      if (!list.length) { const e = document.createElement('div'); e.className = 'bd-empty'; e.textContent = 'No matches yet. Play a class match and the points add up here!'; body.appendChild(e); return; }
+      body.appendChild(boardRow(['', 'Name', '⭐ Points', '🏆 Wins', '🎮 Played', '🧠 Right'], 'head'));
+      list.slice(0, 30).forEach(function (p, i) { body.appendChild(boardRow([medal(i), p.name, p.pts, p.wins, p.played, p.right], i < 3 ? 'g' + (i + 1) : '')); });
+      return;
+    }
+    $('bd-title').textContent = '📺 Class Board';
+    const sm = ES.match.summary(), info = ES.match.info();
+    let rows = [];
+    if (sm) {
+      rows = sm.rows.slice();
+      ban.textContent = sm.mode === 'boss' ? (sm.win === 0 ? '🤖 The class beat the giant robot! 🎉' : 'The robot survived – try again! 💪')
+                      : sm.win < 0 ? "🤝 It's a draw! " + sm.score[0] + ' – ' + sm.score[1]
+                      : (sm.win === 0 ? '🔵 Blue team wins!  ' : '🔴 Red team wins!  ') + (sm.mode === 'rb' ? 'Rounds ' : '') + sm.score[0] + ' – ' + sm.score[1];
+      (sm.awards || []).forEach(function (a) { const c = document.createElement('div'); c.className = 'bd-aw'; c.textContent = a[0] + ' ' + a[1]; const sml = document.createElement('small'); sml.textContent = a[2]; c.appendChild(sml); aw.appendChild(c); });
+    } else if (info) {
+      rows = info.rows.filter(function (r) { return !r.bot; }).map(function (r) { return { name: r.name, team: r.team, kills: r.kills, revives: r.rv || 0, q: r.q || 0, pts: r.pts || 0 }; });
+      ban.textContent = '⚔️ Match in progress…';
+    }
+    if (!rows.length) { const e = document.createElement('div'); e.className = 'bd-empty'; e.textContent = 'No match yet. Start a match and the results appear here.'; body.appendChild(e); return; }
+    rows.sort(function (a, b) { return (b.pts - a.pts) || (b.q - a.q); });
+    body.appendChild(boardRow(['', 'Name', '🎯 Tags', '🧠 Right', '💚 Revives', '⭐ Points'], 'head'));
+    rows.forEach(function (r, i) { body.appendChild(boardRow([medal(i), r.name, r.kills, r.q, r.revives, r.pts], 't' + r.team)); });
+  }
+  function openBoard(tab) {
+    boardTab = tab; $('board').classList.remove('hidden'); renderBoard();
+    clearInterval(boardTimer); boardTimer = setInterval(renderBoard, 1500);
+  }
+  function closeBoard() { $('board').classList.add('hidden'); clearInterval(boardTimer); boardTimer = 0; }
+  $('ts-board').addEventListener('click', function () { openBoard('season'); });
+  $('r-board').addEventListener('click', function () { openBoard('match'); });
+  $('bd-t-match').addEventListener('click', function () { boardTab = 'match'; renderBoard(); });
+  $('bd-t-season').addEventListener('click', function () { boardTab = 'season'; renderBoard(); });
+  $('bd-close').addEventListener('click', closeBoard);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('board').classList.contains('hidden')) closeBoard(); });
+  $('ts-rename').addEventListener('click', function () { const n = prompt('Name of this season (for example: Week 3)', ES.season.get().name); if (n) { ES.season.rename(n); refreshSeason(); } });
+  $('ts-new').addEventListener('click', function () {
+    if (!confirm('Start a NEW season?\n\nThe points of the current season will be erased. (Press "Copy table" first if you want to keep them.)')) return;
+    const n = prompt('Name of the new season', 'Season ' + (ES.season.get().matches ? 'next' : '1')); ES.season.reset(n || 'New season'); refreshSeason();
+  });
+  $('ts-csv').addEventListener('click', function () {
+    const text = ES.season.csv();
+    const done = function () { $('ts-info').textContent = '✅ Copied! Paste it into Google Sheets or Excel.'; setTimeout(refreshSeason, 3000); };
+    try { navigator.clipboard.writeText(text).then(done, function () { window.prompt('Copy this table (Ctrl+C):', text); }); } catch (e) { window.prompt('Copy this table (Ctrl+C):', text); }
+  });
+  refreshSeason();
   function showMatchUi(on) {
     $('r-setup').classList.toggle('hidden', on); $('r-live').classList.toggle('hidden', !on);
     $('r-tools1').classList.toggle('hidden', on);

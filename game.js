@@ -987,6 +987,7 @@
     if (!S.qOpen || S.qState !== 'asking') return;
     S.qState = 'answered';
     const q = S.cur, right = i === q.correct;
+    if (NET) netSend({ t: 'qa', r: right ? 1 : 0 });                       // the referee counts answers for the class awards
     const sub = q.subject, bs = S.stats.bySubj[sub] || (S.stats.bySubj[sub] = { a: 0, c: 0 });
     bs.a++; S.stats.qAsked++;
     const btns = $('qp-opts').children;
@@ -2476,7 +2477,7 @@
 
   G.netEnd = function (m) {
     if (!NET || !G.active || !S) return;
-    S.score = [m.sc[0], m.sc[1]]; NET.rows = m.rows;
+    S.score = [m.sc[0], m.sc[1]]; NET.rows = m.rows; NET.awards = Array.isArray(m.aw) ? m.aw.slice(0, 6) : [];
     endMatch(m.reason);
   };
 
@@ -2484,8 +2485,18 @@
   function renderEndBoard() {
     const box = $('end-board'); if (!box) return;
     box.innerHTML = '';
-    if (!NET || !NET.rows) { box.classList.add('hidden'); return; }
+    if (!NET || !NET.rows) { box.classList.add('hidden'); if ($('end-awards')) $('end-awards').classList.add('hidden'); return; }
     box.classList.remove('hidden');
+    if (NET.awards && NET.awards.length) {                                   // class awards (MVP, Best Brain, ...)
+      const aw = $('end-awards'); aw.innerHTML = ''; aw.classList.remove('hidden'); aw.className = 'cls-awards';
+      const h = document.createElement('div'); h.className = 'cls-aw-h'; h.textContent = '🏅 Class awards'; aw.appendChild(h);
+      NET.awards.forEach(function (a) {
+        const c = document.createElement('div'); c.className = 'cls-aw' + (NET.byEid && NET.byEid[NET.you] && NET.byEid[NET.you].name === String(a[2]) ? ' me' : '');
+        const t = document.createElement('b'); t.textContent = String(a[0]).slice(0, 4) + ' ' + String(a[1]).slice(0, 20);
+        const n = document.createElement('span'); n.textContent = String(a[2]).slice(0, 14);
+        c.appendChild(t); c.appendChild(n); aw.appendChild(c);
+      });
+    } else { const aw = $('end-awards'); if (aw) aw.classList.add('hidden'); }
     [0, 1].forEach(function (team) {
       if (BOSS && team === 1) return;
       const col = document.createElement('div'); col.className = 'sbcol';

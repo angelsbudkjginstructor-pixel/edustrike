@@ -304,3 +304,9 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 #bb-hp-fill { height: 100%; width: 100%; background: linear-gradient(#ff6a45, #c0392b); transition: width .2s; }
 #bb-sh-fill { height: 100%; width: 100%; background: linear-gradient(#8fd3ff, #3a8fe0); transition: width .2s; }
 #bb-msg { font-size: 15px; font-weight: 800; margin-top: 5px; }
+/* Stage 7E: class awards on the student end screen */
+.cls-awards { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin-bottom: 10px; }
+.cls-aw-h { width: 100%; text-align: center; font-weight: 900; font-size: 18px; }
+.cls-aw { background: linear-gradient(#ffe48a, #ffc83d); color: #3b2a00; padding: 6px 12px; border-radius: 12px; font-weight: 800; display: flex; flex-direction: column; align-items: center; min-width: 110px; }
+.cls-aw.me { outline: 3px solid #fff; box-shadow: 0 0 14px #ffd23f; }
+.cls-aw b { font-size: 14px; }

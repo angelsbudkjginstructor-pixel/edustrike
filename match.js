@@ -37,7 +37,7 @@
       ammo: D.mag, ansT: 0, lostT: 0, lastSeen: null, strafeT: 0, strafeDir: 1,
       stuckT: 0, sx: 0, sz: 0, repathT: 0, alert: 0, phase: rnd() * 6, deathT: 0,
       sinceHurt: 99, answering: false, lastShot: 0, lastSt: 0, ready: false, p: null,
-      wpn: null, wAmmo: 0, wUntil: 0, lastEarn: 0, revives: 0, lastRv: 0, lastQm: 0
+      wpn: null, wAmmo: 0, wUntil: 0, lastEarn: 0, revives: 0, lastRv: 0, lastQm: 0, qAsked: 0, qRight: 0, lastQa: 0
     };
   }
 
@@ -241,6 +241,28 @@
     M.ev.push(['rv', e.eid, t.eid, e.team]);
     ES.room.send(t.p, { t: 'respawn', eid: t.eid, x: r2(t.x), y: r2(t.y), z: r2(t.z), yaw: r2(t.yaw), rv: e.eid });
   }
+  /* every answered question is counted for the class awards (right or not) */
+  function onQa(p, m) {
+    const e = p.ent; if (!M || M.phase !== 'play' || !e) return;
+    const now = performance.now(); if (now - e.lastQa < 500) return; e.lastQa = now;
+    e.qAsked++; if (m.r === 1) e.qRight++;
+  }
+  /* match points for the class board and the season: learning counts most (right answers), then helping (revives), then tags */
+  const PTS = { played: 5, right: 3, revive: 4, tag: 1, win: 10 };
+  function ptsOf(e, won) { return PTS.played + e.qRight * PTS.right + e.revives * PTS.revive + e.kills * PTS.tag + (won ? PTS.win : 0); }
+  /* class awards for the end screen and the board: only real students (never bots or the robot) */
+  function computeAwards(rows) {
+    const out = [];
+    const best = function (key, min) {
+      let b = null; rows.forEach(function (r) { if (r[key] >= min && (!b || r[key] > b[key])) b = r; });
+      return b;
+    };
+    const mvp = best('pts', 1); if (mvp && rows.length > 1) out.push(['🏅', 'MVP', mvp.name]);
+    const tag = best('kills', 1); if (tag && !M.boss) out.push(['🎯', 'Top Tagger', tag.name]);
+    const br = best('q', 3); if (br) out.push(['🧠', 'Best Brain', br.name]);
+    const md = best('revives', 1); if (md) out.push(['💚', 'Team Medic', md.name]);
+    return out;
+  }
   /* BOSS ROUND: a student answered a question right: one point off the robot's shield (the referee's rules engine decides) */
   function onBossAnswer(p) {
     const e = p.ent; if (!M || !M.boss || M.phase !== 'play' || !e || !e.alive) return;
@@ -300,7 +322,7 @@
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map, ctf: s.mode === 'ctf' });
     const bossMode = s.mode === 'boss';
-    M = { revive: s.revive !== false, qm: s.qm !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
+    M = { id: Date.now(), revive: s.revive !== false, qm: s.qm !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
@@ -368,9 +390,13 @@
   function finish(reason) {
     if (!M || M.phase === 'ended') return;
     M.phase = 'ended'; M.reason = reason;
-    M.results = M.ents.filter(function (e) { return !e.boss; }).map(function (e) { return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, revives: e.revives, bot: !e.human }; });
+    M.win = M.score[0] > M.score[1] ? 0 : (M.score[1] > M.score[0] ? 1 : -1);              // the winning team (-1 = a draw)
+    M.results = M.ents.filter(function (e) { return !e.boss; }).map(function (e) {
+      return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, revives: e.revives, q: e.qRight, qa: e.qAsked, pts: e.human ? ptsOf(e, M.win === e.team) : 0, bot: !e.human };
+    });
+    M.awards = computeAwards(M.results.filter(function (r) { return !r.bot; }));
     sendSnap();                                           // the last events (the final kill) go out first
-    M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, { t: 'end', reason: reason, sc: M.score.slice(), rows: M.results }); });
+    M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, { t: 'end', reason: reason, sc: M.score.slice(), rows: M.results, aw: M.awards }); });
   }
 
   /* which bonus weapon a player is holding right now (1..4, 0 = none): everybody sees it in the soldier's hands */
@@ -458,7 +484,7 @@
       phase: M.phase, timeLeft: M.timeLeft, score: M.score.slice(), target: M.target, reason: M.reason,
       ready: M.humans.filter(function (e) { return e.p && e.ready; }).length, humans: total,
       boss: M.boss ? { bar: M.boss.st.bar, hp: M.boss.st.hp, hpBar: M.boss.st.hpBar, armor: M.boss.st.armor, armorMax: M.boss.st.armorMax, weak: M.boss.st.weak, ph: M.boss.st.ph } : null,
-      rows: M.ents.filter(function (e) { return !e.boss; }).map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; }),
+      rows: M.ents.filter(function (e) { return !e.boss; }).map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, rv: e.revives, q: e.qRight, pts: e.human ? ptsOf(e, M.phase === 'ended' && M.win === e.team) : 0, bot: !e.human, alive: e.alive }; }),
       rb: M.rb ? { round: M.rb.st.round, need: M.rb.need, rounds: M.rb.st.rounds, rph: M.rb.st.ph, bomb: M.rb.st.b.s, bombT: M.rb.st.b.t, hostage: M.rb.st.h.s } : null,
       ctf: M.ctf ? { caps: M.ctf.st.caps.slice(), f: [M.ctf.st.f[0].s, M.ctf.st.f[1].s] } : null
     };
@@ -472,6 +498,7 @@
   ES.room.on('rv', onRevive);
   ES.room.on('qm', onQm);
   ES.room.on('ba', onBossAnswer);
+  ES.room.on('qa', onQa);
   ES.room.on('ready', function (p) { if (p.ent) p.ent.ready = true; });
   ES.room.on('quit', function (p) { humanLeft(p); });
   ES.room.on('leave', function (p) { humanLeft(p); });
@@ -485,6 +512,12 @@
     info: info,
     running: function () { return !!M; },
     onUpdate: function (fn) { onUpdate = fn; },
+    /* what the class board and the season need (students only; null while no match has finished) */
+    summary: function () {
+      if (!M || M.phase !== 'ended' || !M.results) return null;
+      return { id: M.id, mode: M.boss ? 'boss' : (M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal')), win: M.win, score: M.score.slice(), awards: M.awards || [],
+               rows: M.results.filter(function (r) { return !r.bot; }).map(function (r) { return { name: r.name, team: r.team, kills: r.kills, deaths: r.deaths, revives: r.revives || 0, q: r.q || 0, qa: r.qa || 0, pts: r.pts || 0, won: M.win === r.team }; }) };
+    },
     debug: function () { return M; },
     testTag: function (eid) { const e = M && M.byEid[eid]; if (e && e.alive) kill(e, null, false); }      // used by the automatic tests only
   };

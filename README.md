@@ -203,3 +203,10 @@ The whole class (or you and your bot friends) is ONE team against a giant robot 
 - Teacher: Game mode **Boss Round** + *Robot strength* (Gentle / Normal / Tough). Solo: Game mode **Boss Round** (the bot skill sets the strength).
 - XP: normal match XP + a "Boss Buster" award and badges (beat the robot once / 5 times).
 - Files: `js/boss.js` (rules, shared by the teacher page and the solo game), `js/match.js` (referee), `js/game.js` (robot, balls, bars).
+
+## Stage 7E - Class awards, class board and class season (teacher's page)
+- **End-of-match awards** (class matches): 🏅 MVP, 🎯 Top Tagger, 🧠 Best Brain (3+ right answers), 💚 Team Medic. They show on every student's end screen and on the board.
+- **Class board** (button *📺 Class board* during/after a match, or *Show class board* in the Season box): a big, projector-friendly table (name, tags, right answers, revives, points). The *Season* tab shows the running total with 🥇🥈🥉.
+- **Class season:** match points add up per student name on the teacher's computer (5 for playing + 3 per right answer + 4 per friend revived + 1 per tag + 10 if your team won). Buttons: Rename, New season (asks first), Copy table (paste into Google Sheets / Excel).
+- A finished match is added to the season once, even if the board is opened many times. Nothing leaves the teacher's computer.
+- Files: `js/season.js` (storage + ranking), `js/match.js` (points + awards), `js/teacher-room.js` (board screen).
