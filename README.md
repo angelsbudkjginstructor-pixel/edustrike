@@ -188,3 +188,8 @@ Every student (even a brand-new one) can pick, for free, straight away:
 - **Blasters:** Blue, Red and Green colour accents.
 - **Name colour:** Team colour, Gold, Pink or Green (more unlock at levels 4 and 8).
 Classmates see your cap and name colour in a class match. The code sent over the network looks like `h7:n1` (helmet:name colour).
+
+## Stage 7C - Revive teammates + kind quick messages (class matches)
+- **Revive:** when a student is tagged they wait 7 seconds (instead of 3). A living teammate can walk up to them, press **E** and answer a question. A right answer brings the fallen student back right where they fell. The helper gets +12 XP and the "Team Medic" badges. Teacher switch: *Revive teammates* (On/Off) in Match settings.
+- **Kind quick messages:** press **C**, then a number 1-8 to send a preset phrase (Good job!, Thank you!, Help me!, Follow me!, Revive me please, Good game!, Nice try!, We can do it!). Nobody can type, so nothing unkind can be sent. Only the sender's team sees it (a bubble over their head plus a small log). Teacher switch: *Kind quick messages*.
+- Safety checks: the referee only accepts a revive from a living teammate who is close to a fallen teammate; message numbers must be whole numbers 0-7; one message per 1.5 seconds.

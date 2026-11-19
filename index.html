@@ -236,6 +236,9 @@
     </div>
     <div id="rb-bar" class="hidden"></div>
     <div id="rb-hint" class="hidden"></div>
+    <div id="rv-hint" class="hidden"></div>
+    <div id="qm-log"></div>
+    <div id="qm-panel" class="hidden"><div class="qm-h">💬 Kind messages <small>(press a number · C to close)</small></div><div class="qm-grid"><span><kbd>1</kbd> 👍 Good job!</span><span><kbd>2</kbd> 🙏 Thank you!</span><span><kbd>3</kbd> 🆘 Help me!</span><span><kbd>4</kbd> 👉 Follow me!</span><span><kbd>5</kbd> 💚 Revive me please</span><span><kbd>6</kbd> 😊 Good game!</span><span><kbd>7</kbd> 👏 Nice try!</span><span><kbd>8</kbd> 🎉 We can do it!</span></div></div>
     <div id="fps"></div>
     <canvas id="radar" width="132" height="132"></canvas>
     <div id="feed"></div>
@@ -280,7 +283,7 @@
   </div>
 
   <div id="ov-death" class="overlay clear hidden">
-    <div class="deathcard"><div id="death-text">Tagged!</div><div class="sub">Back in <span id="death-count">3</span>…</div></div>
+    <div class="deathcard"><div id="death-text">Tagged!</div><div class="sub"><div id="death-rv" class="hidden">💚 A friend can revive you!</div>Back in <span id="death-count">3</span>…</div></div>
   </div>
 
   <!-- question panel -->

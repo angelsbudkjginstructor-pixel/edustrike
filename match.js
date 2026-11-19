@@ -21,6 +21,9 @@
   const clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
   const r2 = function (v) { return Math.round(v * 100) / 100; };
 
+  const REVIVE_WAIT = 7;            // seconds a fallen student waits if nobody revives them (3 s when revive is switched off)
+  const REVIVE_R = 4.2;             // how close a friend must stand to the fallen student
+  const QM_COUNT = 8;               // number of preset kind messages
   let M = null, ticker = null, lastNow = 0, snapT = 0, updT = 0, seq = 0, world = null, onUpdate = null;
 
   /* ---------- a fighter (human or bot) ---------- */
@@ -34,7 +37,7 @@
       ammo: D.mag, ansT: 0, lostT: 0, lastSeen: null, strafeT: 0, strafeDir: 1,
       stuckT: 0, sx: 0, sz: 0, repathT: 0, alert: 0, phase: rnd() * 6, deathT: 0,
       sinceHurt: 99, answering: false, lastShot: 0, lastSt: 0, ready: false, p: null,
-      wpn: null, wAmmo: 0, wUntil: 0, lastEarn: 0
+      wpn: null, wAmmo: 0, wUntil: 0, lastEarn: 0, revives: 0, lastRv: 0, lastQm: 0
     };
   }
 
@@ -104,7 +107,7 @@
   };
 
   function kill(target, attacker, head) {
-    target.alive = false; target.hp = 0; target.deaths++; target.respawnT = P.respawn;
+    target.alive = false; target.hp = 0; target.deaths++; target.respawnT = (M.revive && target.human) ? REVIVE_WAIT : P.respawn;
     target.target = null; target.path = null; target.state = 'roam'; target.answering = false; target.wpn = null;   // a bonus weapon is lost when tagged
     if (attacker) { attacker.kills++; if (M.rb) M.rb.killed(attacker.team); else if (!M.ctf) M.score[attacker.team]++; }      // Rescue & Bomb: score = rounds won, tags only break ties
     M.ev.push(['kill', attacker ? attacker.eid : -1, target.eid, head ? 1 : 0]);
@@ -223,6 +226,27 @@
     e.lastRb = now;
     eng.act(e, m.a);
   }
+  /* REVIVE: a living student answered a question right next to a fallen teammate. The referee checks everything:
+     same team, the fallen one is a real student who is still down, the friend is alive and close enough. */
+  function onRevive(p, m) {
+    const e = p.ent; if (!M || !M.revive || M.phase !== 'play' || !e || !e.alive) return;
+    if (M.rb && M.rb.st.ph !== 0) return;
+    const t = M.byEid[m.eid | 0];
+    if (!t || !t.human || t.alive || t === e || t.team !== e.team || !t.p) return;
+    const now = performance.now(); if (now - e.lastRv < 800) return; e.lastRv = now;
+    if (Math.hypot(t.x - e.x, t.z - e.z) > REVIVE_R + 1.5) return;      // a little patience for slow connections
+    t.alive = true; t.hp = P.hp; t.protT = P.protect + 1; t.respawnT = 0; t.sinceHurt = 99; t.answering = false; t.wpn = null; t.ammo = t.D.mag;
+    e.revives++;
+    M.ev.push(['rv', e.eid, t.eid, e.team]);
+    ES.room.send(t.p, { t: 'respawn', eid: t.eid, x: r2(t.x), y: r2(t.y), z: r2(t.z), yaw: r2(t.yaw), rv: e.eid });
+  }
+  /* KIND QUICK MESSAGES: only a number from the fixed list is accepted (nothing a student types is ever sent on) */
+  function onQm(p, m) {
+    const e = p.ent; if (!M || !M.qm || !e || (M.phase !== 'play' && M.phase !== 'count')) return;
+    const i = m.i; if (typeof i !== 'number' || i % 1 !== 0 || i < 0 || i >= QM_COUNT) return;
+    const now = performance.now(); if (now - e.lastQm < 1500) return; e.lastQm = now;
+    M.ev.push(['qm', e.eid, i, e.team]);
+  }
   /* Capture the Flag: the rules engine tells us what happened (grab, drop, capture...): pass it on to every student */
   function cfHook(name, a, b) {
     if (!M) return;
@@ -264,7 +288,7 @@
     // the subtopics the teacher ticked (an empty list = every question); keep only sane text, and not too many
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map, ctf: s.mode === 'ctf' });
-    M = { phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
+    M = { revive: s.revive !== false, qm: s.qm !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
@@ -292,7 +316,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human, sk: e.p && e.p.sk ? e.p.sk : 'h0:n0' }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal'), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal'), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', rv: M.revive ? REVIVE_WAIT : 0, qm: M.qm ? 1 : 0, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
@@ -321,7 +345,7 @@
   function finish(reason) {
     if (!M || M.phase === 'ended') return;
     M.phase = 'ended'; M.reason = reason;
-    M.results = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human }; });
+    M.results = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, revives: e.revives, bot: !e.human }; });
     sendSnap();                                           // the last events (the final kill) go out first
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, { t: 'end', reason: reason, sc: M.score.slice(), rows: M.results }); });
   }
@@ -413,6 +437,8 @@
   ES.room.on('shot', onShot);
   ES.room.on('earn', onEarn);
   ES.room.on('rb', onRb);
+  ES.room.on('rv', onRevive);
+  ES.room.on('qm', onQm);
   ES.room.on('ready', function (p) { if (p.ent) p.ent.ready = true; });
   ES.room.on('quit', function (p) { humanLeft(p); });
   ES.room.on('leave', function (p) { humanLeft(p); });
@@ -426,6 +452,7 @@
     info: info,
     running: function () { return !!M; },
     onUpdate: function (fn) { onUpdate = fn; },
-    debug: function () { return M; }
+    debug: function () { return M; },
+    testTag: function (eid) { const e = M && M.byEid[eid]; if (e && e.alive) kill(e, null, false); }      // used by the automatic tests only
   };
 })();

@@ -282,3 +282,15 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 .pf-awards { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
 .pf-award { padding: 6px 12px; border-radius: 999px; background: #12203a; color: #ffd23f; font-weight: 800; font-size: 14px; }
 .pf-signin-hint { margin: 10px 0; padding: 8px 12px; border-radius: 12px; background: #eef3fb; font-weight: 700; color: #4a5a78; }
+
+/* Stage 7C: revive + kind quick messages */
+#rv-hint { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); padding: 10px 22px; border-radius: 16px; background: rgba(74,222,128,.96); color: #0b2a14; font-size: 24px; font-weight: 900; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+#rv-hint kbd { background: #0b2a14; color: #fff; border-radius: 8px; padding: 2px 10px; margin-right: 6px; }
+#death-rv { font-size: 22px; color: #bbf7d0; margin-bottom: 6px; }
+#qm-log { position: absolute; left: 12px; bottom: 30%; font-size: 16px; font-weight: 800; pointer-events: none; }
+#qm-log div { background: rgba(10,20,40,.7); padding: 4px 10px; margin-top: 4px; border-radius: 10px; display: table; }
+#qm-panel { position: absolute; left: 50%; top: 28%; transform: translateX(-50%); background: rgba(10,20,40,.92); border: 3px solid #4ade80; border-radius: 18px; padding: 12px 18px; z-index: 20; }
+#qm-panel .qm-h { font-size: 20px; font-weight: 900; margin-bottom: 8px; text-align: center; }
+#qm-panel small { font-size: 13px; font-weight: 700; opacity: .8; }
+#qm-panel .qm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 19px; font-weight: 800; }
+#qm-panel kbd { background: #4ade80; color: #0b2a14; border-radius: 6px; padding: 0 8px; margin-right: 6px; }

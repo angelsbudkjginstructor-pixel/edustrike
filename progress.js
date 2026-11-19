@@ -70,7 +70,8 @@
     right50: ['🧠', '50 Right Answers', 'Answer 50 questions right'], right200: ['🎓', '200 Right Answers', 'Answer 200 questions right'],
     streak5: ['🔥', 'Streak of 5', '5 right answers in a row'], streak10: ['⚡', 'Streak of 10', '10 right answers in a row'],
     perfect: ['⭐', 'Perfect Match', 'Answer every question right (at least 5)'], sharp: ['🎯', 'Sharpshooter', '60% shot accuracy (at least 15 shots)'],
-    survivor: ['🛡️', 'Survivor', 'Tag 3 or more and never get tagged']
+    survivor: ['🛡️', 'Survivor', 'Tag 3 or more and never get tagged'],
+    medic5: ['💚', 'Team Medic', 'Revive 5 friends'], medic25: ['🚑', 'Super Medic', 'Revive 25 friends']
   };
   function badgeInfo(id) {      // subject badges are made from the subject name: "sj_<code>"
     if (BADGES[id]) return BADGES[id];
@@ -97,13 +98,13 @@
 
   /* ---------- make any loaded profile safe ---------- */
   function blank(name, ch) {
-    return { v: 1, name: name, ch: ch, xp: 0, matches: 0, wins: 0, kills: 0, right: 0, asked: 0, bestStreak: 0, subj: {}, badges: [], equip: { helmet: 'h0', gun: 'g0', trail: 't0', tag: 'n0' }, updated: 0, dirty: false };
+    return { v: 1, name: name, ch: ch, xp: 0, matches: 0, wins: 0, kills: 0, right: 0, asked: 0, bestStreak: 0, revives: 0, subj: {}, badges: [], equip: { helmet: 'h0', gun: 'g0', trail: 't0', tag: 'n0' }, updated: 0, dirty: false };
   }
   const num = function (v, max) { v = Math.floor(Number(v)); return isFinite(v) && v > 0 ? Math.min(v, max || 1e7) : 0; };
   function clean(raw, name, ch) {
     const P = blank(name, ch);
     if (!raw || typeof raw !== 'object') return P;
-    P.xp = num(raw.xp, 1e6); P.matches = num(raw.matches); P.wins = num(raw.wins); P.kills = num(raw.kills); P.right = num(raw.right); P.asked = num(raw.asked); P.bestStreak = num(raw.bestStreak, 999);
+    P.xp = num(raw.xp, 1e6); P.matches = num(raw.matches); P.wins = num(raw.wins); P.kills = num(raw.kills); P.right = num(raw.right); P.asked = num(raw.asked); P.bestStreak = num(raw.bestStreak, 999); P.revives = num(raw.revives, 99999);
     if (raw.subj && typeof raw.subj === 'object') Object.keys(raw.subj).slice(0, 40).forEach(function (k) { P.subj[String(k).slice(0, 30)] = num(raw.subj[k]); });
     if (Array.isArray(raw.badges)) P.badges = raw.badges.filter(function (b) { return typeof b === 'string' && b.length < 40; }).slice(0, 80);
     KINDS.forEach(function (k) {
@@ -118,7 +119,7 @@
     const win = (b.xp > a.xp || (b.xp === a.xp && b.updated > a.updated)) ? b : a, lose = win === a ? b : a;
     const M = clean(win, a.name, a.ch);
     lose.badges.forEach(function (x) { if (M.badges.indexOf(x) < 0) M.badges.push(x); });
-    M.bestStreak = Math.max(a.bestStreak, b.bestStreak);
+    M.bestStreak = Math.max(a.bestStreak, b.bestStreak); M.revives = Math.max(a.revives || 0, b.revives || 0);
     Object.keys(lose.subj).forEach(function (k) { M.subj[k] = Math.max(M.subj[k] || 0, lose.subj[k]); });
     return M;
   }
@@ -191,24 +192,25 @@
   function award(m) {
     const out = { signedIn: !!P, gain: [], total: 0, awards: [], newBadges: [], newItems: [], newPerks: [], before: null, after: null };
     m = m || {};
-    const asked = num(m.qAsked), right = Math.min(num(m.qRight), asked), kills = num(m.kills), shots = num(m.shots), hits = Math.min(num(m.hits), shots), best = num(m.bestStreak, 999), deaths = num(m.deaths);
+    const asked = num(m.qAsked), right = Math.min(num(m.qRight), asked), kills = num(m.kills), shots = num(m.shots), hits = Math.min(num(m.hits), shots), best = num(m.bestStreak, 999), deaths = num(m.deaths), revives = Math.min(num(m.revives), 20);
     /* awards of THIS match (shown even to guests) */
     if (asked >= 5 && right === asked) out.awards.push(['🧠', 'Best Brain', 'Every answer was right!']);
     else if (asked >= 5 && right / asked >= 0.8) out.awards.push(['🧠', 'Sharp Mind', '80% or more right.']);
     if (shots >= 15 && hits / shots >= 0.6) out.awards.push(['🎯', 'Sharpshooter', 'Most of your shots hit.']);
     if (best >= 5) out.awards.push(['🔥', 'Streak Master', best + ' right answers in a row!']);
     if (kills >= 3 && deaths === 0) out.awards.push(['🛡️', 'Survivor', 'Never got tagged.']);
+    if (revives >= 2) out.awards.push(['💚', 'Team Medic', 'You revived ' + revives + ' friends!']);
     if (m.outcome === 'win') out.awards.push(['🏆', 'Team Winner', 'Your team won.']);
     /* XP */
     const add = function (txt, n) { if (n > 0) { out.gain.push([txt, n]); out.total += n; } };
-    add('Played the match', 15); add(right + ' right answers', right * 10); add(kills + ' tags', kills * 4);
+    add('Played the match', 15); add(right + ' right answers', right * 10); add(kills + ' tags', kills * 4); add(revives + (revives === 1 ? ' friend revived' : ' friends revived'), revives * 12);
     if (m.outcome === 'win') add('Victory bonus', 40); else if (m.outcome === 'draw') add('Draw bonus', 15);
     if (best >= 10) add('Streak of 10!', 30); else if (best >= 5) add('Streak of 5!', 10);
     if (out.total > XP_CAP) { out.gain.push(['(match limit)', XP_CAP - out.total]); out.total = XP_CAP; }
     if (!P) return out;                                                                   // a guest: awards shown, nothing saved
     out.before = { xp: P.xp, lv: levelOf(P.xp) };
     P.xp += out.total; P.matches++; if (m.outcome === 'win') P.wins++;
-    P.kills += kills; P.right += right; P.asked += asked; P.bestStreak = Math.max(P.bestStreak, best);
+    P.kills += kills; P.right += right; P.asked += asked; P.bestStreak = Math.max(P.bestStreak, best); P.revives = (P.revives || 0) + revives;
     Object.keys(m.bySubj || {}).forEach(function (k) { const v = m.bySubj[k]; P.subj[k] = (P.subj[k] || 0) + num(v && v.c); });
     const got = function (id) { if (P.badges.indexOf(id) < 0) { P.badges.push(id); out.newBadges.push(id); } };
     if (P.matches >= 5) got('played5'); if (P.matches >= 25) got('played25');
@@ -218,6 +220,7 @@
     if (asked >= 5 && right === asked) got('perfect');
     if (shots >= 15 && hits / shots >= 0.6) got('sharp');
     if (kills >= 3 && deaths === 0) got('survivor');
+    if (P.revives >= 5) got('medic5'); if (P.revives >= 25) got('medic25');
     Object.keys(P.subj).forEach(function (k) { if (P.subj[k] >= 20) got('sj_' + k); });
     out.after = { xp: P.xp, lv: levelOf(P.xp) };
     KINDS.forEach(function (k) { CAT[k].forEach(function (it) { if (it.lvl > out.before.lv && it.lvl <= out.after.lv) out.newItems.push([k, it]); }); });

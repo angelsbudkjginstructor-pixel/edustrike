@@ -51,6 +51,7 @@
   function ultraOff() { if (ultraU) { try { ultraU.dispose(); } catch (e) { /* ignore */ } ultraU = null; } ultraCtx = null; }
   let MFX = null, FXD = null;           // map effect: MFX = the floating particles (3D), FXD = the effect numbers for this map (ES.MAP_FX)
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
+  let RVM = null;                       // class match: the green revive markers over fallen teammates (one per student, made when needed)
   let CF = null, CFV = null;            // Capture the Flag: CF = the rules engine (ctf.js), CFV = the 3D flags (null in other modes)
   let RB = null, RBV = null;            // Rescue & Bomb mode: RB = the rules engine (rb.js), RBV = the 3D pieces (null in normal mode)
   const myTeam = function () { return NET ? NET.team : 0; };
@@ -68,7 +69,8 @@
   G.start = function (opts) {
     if (G.active) G.stop();
     st = JSON.parse(JSON.stringify(ES.settings));
-    NET = (opts && opts.net) ? { team: opts.net.team, you: opts.net.you, byEid: {}, sendT: 0, cdLast: 99, hostPh: 'wait', rows: null } : null;
+    NET = (opts && opts.net) ? { team: opts.net.team, you: opts.net.you, byEid: {}, sendT: 0, cdLast: 99, hostPh: 'wait', rows: null, rv: opts.net.rv | 0, qm: opts.net.qm ? 1 : 0, qmOpen: false, qmT: 0, rvEid: 0 } : null;
+    RVM = NET ? {} : null;
     st.gfx = ES.gfxKey(st.gfx);
     if (opts && opts.net && opts.net.gfx && ES.GFX[ES.gfxKey(opts.net.gfx)]) st.gfx = ES.gfxKey(opts.net.gfx);      // the teacher can make everybody use one graphics level
     gfx = Object.assign({}, ES.GFX[st.gfx] || ES.GFX.low);       // a copy: a slow computer may step this down while playing
@@ -152,7 +154,7 @@
       /* class match: the referee (teacher's page) told us who is playing */
       opts.net.ents.forEach(function (d) {
         const e = makeEnt(d.team, d.name, d.eid === NET.you, 'normal');
-        e.eid = d.eid; e.sk = d.sk || 'h0:n0'; e.isBot = false; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
+        e.eid = d.eid; e.sk = d.sk || 'h0:n0'; e.isBot = false; e.human = !d.bot; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
         NET.byEid[d.eid] = e; ents.push(e);
         if (e.isPlayer) player = e;
       });
@@ -196,7 +198,7 @@
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       qMission: '', qMax: 0, bannerT: 0, fxT: 3.2, airJ: 0, spaceWas: false,
-      stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bestStreak: 0, bySubj: {}, missed: [] },
+      stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bestStreak: 0, revives: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
     };
     Object.keys(cache).forEach(function (k) { delete cache[k]; });
@@ -221,7 +223,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false; NET = null; RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null; MFX = null; FXD = null;
+    G.active = false; NET = null; RVM = null; RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null; MFX = null; FXD = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -240,7 +242,7 @@
     } catch (e) { /* ignore - leaving the game must never fail */ }
     renderer = null; scene = null; world = null; shared = null;
     const wrap = $('gl-wrap'); if (wrap) wrap.innerHTML = '';
-    ['ov-ready', 'ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard', 'ov-round', 'rb-bar', 'rb-hint'].forEach(function (id) { show(id, false); });
+    ['ov-ready', 'ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard', 'ov-round', 'rb-bar', 'rb-hint', 'rv-hint', 'qm-panel'].forEach(function (id) { show(id, false); });
   };
 
   /* =====================================================================
@@ -1087,7 +1089,7 @@
     S.prog = null;                                       // XP, level-ups and badges for this match (see js/progress.js)
     try {
       const st2 = S.stats;
-      S.prog = ES.progress ? ES.progress.award({ kills: st2.kills, deaths: st2.deaths, shots: st2.shots, hits: st2.hits, qAsked: st2.qAsked, qRight: st2.qRight, bestStreak: st2.bestStreak, bySubj: st2.bySubj, outcome: outcome }) : null;
+      S.prog = ES.progress ? ES.progress.award({ kills: st2.kills, deaths: st2.deaths, shots: st2.shots, hits: st2.hits, qAsked: st2.qAsked, qRight: st2.qRight, bestStreak: st2.bestStreak, revives: st2.revives, bySubj: st2.bySubj, outcome: outcome }) : null;
     } catch (e) { S.prog = null; }
     buildEndScreen(outcome);
     show('ov-end', true);
@@ -1186,13 +1188,19 @@
       } else if (c === 'Enter' || c === 'Space') closeQuestion();
       return;
     }
+    if (NET && NET.qmOpen) {                                   // the kind-message panel: keys 1-8 send, C / Esc close
+      const d = /^Digit([1-8])$/.exec(c) || /^Numpad([1-8])$/.exec(c);
+      if (d || c === 'KeyC' || c === 'Escape') { e.preventDefault(); if (d) sendQm(+d[1] - 1); closeQm(); return; }
+    }
     if (S.paused) { if (c === 'Escape' || c === 'Enter') resume(); return; }
     if (c === 'Escape') { pause(); return; }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(c) >= 0) e.preventDefault();
     if (e.repeat) { keys[c] = true; return; }
     keys[c] = true;
+    if (S.phase === 'play' && NET && NET.qm && c === 'KeyC') { openQm(); return; }
     if (S.phase !== 'play') return;
     if (c === 'KeyR') openQuestion('');
+    else if (c === 'KeyE' && NET && reviveTarget()) openRevive();
     else if (c === 'KeyE' && (RB || CF)) openMission();
     else if (c === 'KeyF') fireHeld = true;
     else if (c === 'Space' && player.alive && player.onGround) ES.audio.sfx('jump');
@@ -1608,7 +1616,7 @@
   function resetHudViews() {
     show('ov-ready', true);
     ['ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard'].forEach(function (id) { show(id, false); });
-    $('toast').classList.remove('show'); $('feed').innerHTML = '';
+    $('toast').classList.remove('show'); $('feed').innerHTML = ''; $('qm-log').innerHTML = '';
     $('radar').classList.toggle('hidden', false);
     const ctrl = $('ready-look'); if (ctrl) ctrl.textContent = st.lookMode === 'lock' ? 'Mouse = look & aim  ·  Left click = fire' : 'Hold RIGHT mouse button (or arrow keys) to look  ·  Left click or F = fire';
     setText('sc-target', RB ? 'Round 1 · first to ' + RB.eng.need : (CF ? 'Most captures wins' : 'First to ' + S.target));
@@ -1731,7 +1739,8 @@
     rescue: { ask: '🆘 Correct answer = the hostage is freed!', done: '🆘 Freeing the hostage…' },
     plant: { ask: '💣 Correct answer = the bomb is planted!', done: '💣 Planting the bomb…' },
     defuse: { ask: '🔧 Correct answer = the bomb is defused!', done: '🔧 Defusing the bomb…' },
-    grab: { ask: '🚩 Correct answer = you grab the flag!', done: '🚩 Grabbing the flag…' }
+    grab: { ask: '🚩 Correct answer = you grab the flag!', done: '🚩 Grabbing the flag…' },
+    revive: { ask: '💚 Correct answer = your friend is back in the game!', done: '💚 Reviving your friend…' }
   };
   const RB_WHY = {
     saved: '🆘 The hostage is saved!', defuse: '🔧 The bomb was defused!', boom: '💥 BOOM! The bomb exploded!',
@@ -1851,6 +1860,7 @@
   }
   /* a right answer on a mission question: do it (solo: here, class: ask the referee) */
   function rbDo(kind) {
+    if (kind === 'revive') { if (NET && NET.rvEid) netSend({ t: 'rv', eid: NET.rvEid }); return; }
     if (!RB && !CF) return;
     if (NET) { netSend({ t: 'rb', a: kind }); return; }
     if (!(RB || CF).eng.act(player, kind)) toast('Too late! 😬', 1.4);
@@ -2084,6 +2094,8 @@
       }
       updatePlayer(dt, dt);
       musicMood(dt);
+      updateRevive(dt);
+      updateBubbles(dt);
     }
     animateMeshes(dt);
     updateCamera(dt);
@@ -2169,6 +2181,16 @@
       if (v !== player) G.soundAt('scream', v.x, v.z, 0.9);
       if (v === player) $('death-text').textContent = a ? 'Tagged by ' + a.name + '!' : 'You were tagged!';
       if (a === player) { S.stats.kills++; ES.audio.sfx('kill'); }
+    } else if (k === 'rv') {                                          // a friend was revived (only that team hears about it)
+      const a = NET.byEid[ev[1]], v = NET.byEid[ev[2]];
+      if (ev[3] === NET.team && a && v) {
+        if (a === player) { S.stats.revives++; toast('💚 You revived ' + v.name + '! +12 XP', 2.6); }
+        else if (v !== player) toast('💚 ' + a.name + ' revived ' + v.name + '!', 2.2);
+        ES.audio.sfx('rb_rescue', 0.8);
+        burst(v.x, v.y + 1, v.z, 0x4ade80, 16);
+      }
+    } else if (k === 'qm') {
+      showQm(ev[1], ev[2], ev[3]);
     } else if (k === 'rb') {
       rbEffects(ev[1], ev[2], ev[3]);
     } else if (k === 'cf') {
@@ -2185,24 +2207,114 @@
   /* the referee says we were tagged */
   function netDie() {
     const p = player;
-    p.alive = false; p.hp = 0; p.respawnT = P.respawn;
+    p.alive = false; p.hp = 0; p.respawnT = NET.rv || P.respawn;
     S.stats.deaths++; dropWeapon(true);
     if (S.qOpen) cancelQuestion(true);
     fireHeld = false;
+    show('death-rv', !!NET.rv);
     show('ov-death', true);
     ES.audio.sfx('die'); ES.audio.sfx('scream', 1);
+  }
+
+
+  /* =====================================================================
+     REVIVE + KIND QUICK MESSAGES (class matches only)
+     A tagged student waits a few seconds - OR a living teammate walks up, presses E and answers a question
+     right: the fallen student is back at once, right where they fell. The referee checks everything.
+     Quick messages are a fixed list of friendly phrases; nobody can type anything.
+     ===================================================================== */
+  const QM_LIST = ['👍 Good job!', '🙏 Thank you!', '🆘 Help me!', '👉 Follow me!', '💚 Revive me please', '😊 Good game!', '👏 Nice try!', '🎉 We can do it!'];
+  const REVIVE_R = 3.4;
+  /* the nearest fallen teammate close enough to revive (or null) */
+  function reviveTarget() {
+    if (!NET || !NET.rv || !player.alive || S.phase !== 'play') return null;
+    if (RB && RB.eng.st.ph !== 0) return null;
+    let best = null, bd = REVIVE_R;
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i];
+      if (!e.isRemote || e.alive || e.team !== myTeam() || !e.seen || !e.human) continue;
+      const d = Math.hypot(e.x - player.x, e.z - player.z);
+      if (d < bd && Math.abs((e.y || 0) - (player.y || 0)) < 2.5) { bd = d; best = e; }
+    }
+    return best;
+  }
+  function openRevive() {
+    const t = reviveTarget(); if (!t || S.qOpen) return;
+    NET.rvEid = t.eid;
+    openQuestion('revive');
+  }
+  /* every frame: green markers over fallen teammates, the "press E" hint, and close the question if the friend is already back */
+  function updateRevive(dt) {
+    if (!RVM) return;
+    const t = reviveTarget(), hint = $('rv-hint');
+    if (S.qOpen && S.qMission === 'revive') {
+      const v = NET.byEid[NET.rvEid];
+      if (!v || v.alive) { if (S.qState === 'asking') { toast('💚 ' + (v ? v.name : 'Your friend') + ' is already back!', 2); cancelQuestion(true); } }
+    }
+    const show2 = !!t && !S.qOpen && !S.paused;
+    hint.classList.toggle('hidden', !show2);
+    if (show2) { const txt = '💚 Revive ' + t.name; if (hint.dataset.k !== txt) { hint.dataset.k = txt; hint.innerHTML = '<kbd>E</kbd>' + txt.replace(/</g, ''); } }
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i];
+      if (!e.isRemote || !e.human || e.team !== myTeam() || !NET.rv) continue;
+      let mk = RVM[e.eid];
+      const down = !e.alive && e.seen && e.deathT <= 0 && S.phase === 'play';
+      if (!down) { if (mk) mk.visible = false; continue; }
+      if (!mk) {
+        mk = RVM[e.eid] = new T.Group();
+        const col = 0x4ade80, mat = new T.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false, side: T.DoubleSide, fog: false });
+        const ring = new T.Mesh(new T.RingGeometry(0.55, 0.8, 24), mat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; mk.add(ring);
+        const beam = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, 5, 8, 1, true), mat.clone()); beam.material.opacity = 0.22; beam.position.y = 2.5; mk.add(beam);
+        const lab = makeNameSprite('💚 ' + e.name, '#16a34a', true); lab.scale.set(1.9, 0.48, 1); lab.position.y = 2.2; mk.add(lab);
+        mk.userData.ring = ring; scene.add(mk);
+      }
+      mk.visible = true; mk.position.set(e.x, e.y || 0, e.z);
+      const pulse = 1 + Math.sin(performance.now() / 220) * 0.12; mk.userData.ring.scale.set(pulse, pulse, 1);
+    }
+  }
+
+  function openQm() {
+    if (!NET || !NET.qm || S.qOpen || S.paused) return;
+    NET.qmOpen = true; show('qm-panel', true);
+  }
+  function closeQm() { if (NET) NET.qmOpen = false; show('qm-panel', false); }
+  function sendQm(i) {
+    if (!NET || !NET.qm || NET.qmT > performance.now() - 1500) return;      // one message every 1.5 s
+    NET.qmT = performance.now(); netSend({ t: 'qm', i: i });
+  }
+  /* a message arrived (the referee sends it to everybody; we only show our own team's): a bubble over the head + a line in the log */
+  function showQm(eid, i, team) {
+    const e = NET.byEid[eid]; if (!e || team !== myTeam() || !QM_LIST[i]) return;
+    const log = $('qm-log'), line = document.createElement('div');
+    line.textContent = (e === player ? 'You' : e.name) + ': ' + QM_LIST[i];
+    log.appendChild(line); while (log.children.length > 3) log.removeChild(log.firstChild);
+    setTimeout(function () { if (line.parentNode) line.parentNode.removeChild(line); }, 5000);
+    ES.audio.sfx('open', 0.4);
+    if (e !== player && e.mesh) {                                              // a bubble over their head for 3 seconds
+      if (e.bubble) { e.mesh.remove(e.bubble); if (e.bubble.material.map) e.bubble.material.map.dispose(); e.bubble.material.dispose(); }
+      const b = makeNameSprite(QM_LIST[i], '#ffffff', true); b.scale.set(2.6, 0.65, 1); b.position.y = 2.75;
+      e.mesh.add(b); e.bubble = b; e.bubbleT = 3;
+    }
+  }
+  function updateBubbles(dt) {
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i]; if (!e.bubble) continue;
+      e.bubbleT -= dt;
+      if (e.bubbleT <= 0 && e.mesh) { e.mesh.remove(e.bubble); if (e.bubble.material.map) e.bubble.material.map.dispose(); e.bubble.material.dispose(); e.bubble = null; }
+    }
   }
 
   G.netRespawn = function (m) {
     if (!NET || !G.active || !S) return;
     const p = player;
-    p.x = m.x; p.z = m.z; p.y = 0; p.vx = p.vz = p.vy = 0; yaw = m.yaw; pitch = 0;
+    p.x = m.x; p.z = m.z; p.y = typeof m.y === 'number' ? m.y : 0; p.vx = p.vz = p.vy = 0; yaw = m.yaw; pitch = 0;
     p.alive = true; p.hp = P.hp; p.protT = P.protect;
     if (S.weapon !== 'pistol') dropWeapon(true);              // a new round starts with the normal blaster
     if (S.qOpen && (RB || CF)) cancelQuestion(true);
     S.ammo = Math.max(S.ammo, startAmmo()); S.sinceHurt = 99;
     show('ov-death', false);
     ES.audio.sfx('respawn');
+    if (m.rv) { const r = NET.byEid[m.rv]; toast('💚 ' + (r ? r.name : 'A friend') + ' revived you!', 3); }
   };
 
   G.netEnd = function (m) {
