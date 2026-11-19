@@ -90,6 +90,7 @@
           <option value="normal">⚔️ Normal – tag the other team</option>
           <option value="rb">🆘💣 Rescue &amp; Bomb – rounds</option>
           <option value="ctf">🚩 Capture the Flag – long arena</option>
+          <option value="boss">🤖 Boss Round – beat the giant robot</option>
         </select>
       </label>
       <div id="set-rb" class="hidden">
@@ -235,6 +236,7 @@
       <div class="team red"><span id="sc-red">0</span></div>
     </div>
     <div id="rb-bar" class="hidden"></div>
+    <div id="boss-bar" class="hidden"><div class="bb-name">🤖 GIGA-BOT<span id="bb-bars"></span></div><div class="bb-hp"><div id="bb-hp-fill"></div></div><div class="bb-sh"><div id="bb-sh-fill"></div></div><div id="bb-msg"></div></div>
     <div id="rb-hint" class="hidden"></div>
     <div id="rv-hint" class="hidden"></div>
     <div id="qm-log"></div>
@@ -330,6 +332,7 @@
 <script src="bots.js"></script>
 <script src="rb.js"></script>
 <script src="ctf.js"></script>
+<script src="boss.js"></script>
 <script src="game.js"></script>
 <script src="gate.js"></script>
 <script src="net.js"></script>

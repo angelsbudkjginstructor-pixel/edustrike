@@ -193,3 +193,13 @@ Classmates see your cap and name colour in a class match. The code sent over the
 - **Revive:** when a student is tagged they wait 7 seconds (instead of 3). A living teammate can walk up to them, press **E** and answer a question. A right answer brings the fallen student back right where they fell. The helper gets +12 XP and the "Team Medic" badges. Teacher switch: *Revive teammates* (On/Off) in Match settings.
 - **Kind quick messages:** press **C**, then a number 1-8 to send a preset phrase (Good job!, Thank you!, Help me!, Follow me!, Revive me please, Good game!, Nice try!, We can do it!). Nobody can type, so nothing unkind can be sent. Only the sender's team sees it (a bubble over their head plus a small log). Teacher switch: *Kind quick messages*.
 - Safety checks: the referee only accepts a revive from a living teammate who is close to a fallen teammate; message numbers must be whole numbers 0-7; one message per 1.5 seconds.
+
+## Stage 7D - Boss Round (solo and class)
+The whole class (or you and your bot friends) is ONE team against a giant robot called GIGA-BOT.
+- **Right answers break its shield.** Every right answer (R key) takes 1 point off the shield. Bot friends help a little too.
+- **When the shield is gone the robot is STUNNED for 12 seconds.** It kneels and everybody shoots it. Shots do nothing while the shield is up.
+- The robot has **3 health bars**. Each time one is empty it gets up with a bigger shield and attacks a little faster. Empty all 3 to win before time runs out.
+- Its attacks are slow and warned: energy balls (a ring marks who is targeted) and a stomp (a red ring on the floor). Tagged students can be revived by friends (class matches).
+- Teacher: Game mode **Boss Round** + *Robot strength* (Gentle / Normal / Tough). Solo: Game mode **Boss Round** (the bot skill sets the strength).
+- XP: normal match XP + a "Boss Buster" award and badges (beat the robot once / 5 times).
+- Files: `js/boss.js` (rules, shared by the teacher page and the solo game), `js/match.js` (referee), `js/game.js` (robot, balls, bars).

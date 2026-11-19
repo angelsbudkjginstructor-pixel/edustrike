@@ -294,3 +294,13 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 #qm-panel small { font-size: 13px; font-weight: 700; opacity: .8; }
 #qm-panel .qm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 19px; font-weight: 800; }
 #qm-panel kbd { background: #4ade80; color: #0b2a14; border-radius: 6px; padding: 0 8px; margin-right: 6px; }
+
+/* Stage 7D: Boss Round */
+#boss-bar { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); width: min(460px, 80%); padding: 7px 14px 8px; border-radius: 14px; background: rgba(10,20,40,.82); border: 2px solid #5ab8ff; text-align: center; }
+#boss-bar.weak { border-color: #ffe14a; background: rgba(90,60,0,.85); animation: rbpulse .5s infinite alternate; }
+#boss-bar .bb-name { font-size: 16px; font-weight: 900; }
+#boss-bar .bb-name span { font-weight: 700; opacity: .85; font-size: 14px; }
+#boss-bar .bb-hp, #boss-bar .bb-sh { height: 13px; border-radius: 8px; background: rgba(255,255,255,.18); margin-top: 5px; overflow: hidden; }
+#bb-hp-fill { height: 100%; width: 100%; background: linear-gradient(#ff6a45, #c0392b); transition: width .2s; }
+#bb-sh-fill { height: 100%; width: 100%; background: linear-gradient(#8fd3ff, #3a8fe0); transition: width .2s; }
+#bb-msg { font-size: 15px; font-weight: 800; margin-top: 5px; }

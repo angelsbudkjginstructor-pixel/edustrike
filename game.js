@@ -51,6 +51,7 @@
   function ultraOff() { if (ultraU) { try { ultraU.dispose(); } catch (e) { /* ignore */ } ultraU = null; } ultraCtx = null; }
   let MFX = null, FXD = null;           // map effect: MFX = the floating particles (3D), FXD = the effect numbers for this map (ES.MAP_FX)
   let NET = null;                       // set while playing a CLASS match (null = solo vs bots)
+  let BOSS = null;                      // Boss Round: { eng: the rules (boss.js), ent: the robot's fighter, V: the 3D pieces }
   let RVM = null;                       // class match: the green revive markers over fallen teammates (one per student, made when needed)
   let CF = null, CFV = null;            // Capture the Flag: CF = the rules engine (ctf.js), CFV = the 3D flags (null in other modes)
   let RB = null, RBV = null;            // Rescue & Bomb mode: RB = the rules engine (rb.js), RBV = the 3D pieces (null in normal mode)
@@ -154,22 +155,25 @@
       /* class match: the referee (teacher's page) told us who is playing */
       opts.net.ents.forEach(function (d) {
         const e = makeEnt(d.team, d.name, d.eid === NET.you, 'normal');
-        e.eid = d.eid; e.sk = d.sk || 'h0:n0'; e.isBot = false; e.human = !d.bot; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
+        e.eid = d.eid; e.sk = d.sk || 'h0:n0'; e.isBot = false; e.human = !d.bot; if (d.boss) { e.boss = true; e.human = false; } e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
         NET.byEid[d.eid] = e; ents.push(e);
         if (e.isPlayer) player = e;
       });
-      ents.forEach(function (e) { if (!e.isPlayer) { e.mesh = buildBotMesh(e); addCrest(e.mesh, e.sk); e.mesh.visible = false; scene.add(e.mesh); } });
+      ents.forEach(function (e) { if (!e.isPlayer) { if (e.boss) e.mesh = buildBossMesh(); else { e.mesh = buildBotMesh(e); addCrest(e.mesh, e.sk); } e.mesh.visible = false; scene.add(e.mesh); } });
       player.x = opts.net.x; player.z = opts.net.z; player.y = 0; player.yaw = opts.net.yaw; yaw = opts.net.yaw; pitch = 0;
     } else {
       player = makeEnt(0, st.name || 'Cadet', true, 'normal');
       ents.push(player);
       const names = [ES.BOT_NAMES[0].slice(), ES.BOT_NAMES[1].slice()];
       for (let i = 1; i < st.botsPerTeam; i++) ents.push(makeEnt(0, names[0].shift() || 'Ally' + i, false, 'normal'));
-      for (let i = 0; i < st.botsPerTeam; i++) ents.push(makeEnt(1, names[1].shift() || 'Foe' + i, false, st.diff));
+      if (st.mode === 'boss') {                                                     // Boss Round (solo): you and your bot friends against ONE giant robot
+        const be = makeEnt(1, 'GIGA-BOT', false, 'normal'); be.boss = true; be.isBot = false; ents.push(be);
+      } else for (let i = 0; i < st.botsPerTeam; i++) ents.push(makeEnt(1, names[1].shift() || 'Foe' + i, false, st.diff));
       const used = [[], []];
       ents.forEach(function (e) {
-        if (!e.isPlayer) { e.mesh = buildBotMesh(e); scene.add(e.mesh); }
+        if (!e.isPlayer) { e.mesh = e.boss ? buildBossMesh() : buildBotMesh(e); scene.add(e.mesh); }
         placeAtSpawn(e, used);
+        if (e.boss) { e.x = 0; e.z = -22; e.y = 0; e.yaw = 0; }
       });
     }
 
@@ -191,9 +195,20 @@
       if (!NET) G.ctf = CF.eng;                                                  // bots read the rules from here
     }
 
+    /* ---- Boss Round: the rules engine (solo: runs here; class: the teacher's page runs it and we copy its state) ---- */
+    BOSS = null;
+    const bossEnt = ents.filter(function (e) { return e.boss; })[0];
+    if (bossEnt) {
+      if (!NET) ents.forEach(function (e, i) { e.eid = i; });
+      BOSS = { ent: bossEnt, V: null, lastBlock: 0, chipT: {}, eng: ES.createBoss({
+        ent: bossEnt, allies: function () { return ents.filter(function (a) { return a.team === 0; }); }, humans: NET ? 4 : 1, strength: NET ? 'normal' : ({ easy: 'gentle', normal: 'normal', hard: 'tough' }[st.diff] || 'normal'),
+        minutes: NET ? opts.net.minutes : st.minutes, world: world, hurt: function (a, amt) { if (!NET) G.damage(a, amt, null, false); }, hook: NET ? function () {} : bossEffects }) };
+      // a solo player has the whole team's help: the bot friends also answer questions now and then (see soloBossTick)
+    }
+
     S = {
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
-      total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: CF ? 9999 : (NET ? opts.net.target : st.targetKills),
+      total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: (CF || BOSS) ? 9999 : (NET ? opts.net.target : st.targetKills),
       ammo: startAmmo(), fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
@@ -210,6 +225,7 @@
     radarCtx = $('radar').getContext('2d');
     if (RB) buildRB();
     if (CF) buildCF();
+    if (BOSS) buildBossFx();
 
     addListeners();
     resetHudViews();
@@ -223,7 +239,7 @@
 
   G.stop = function () {
     if (!G.active && !renderer) return;
-    G.active = false; NET = null; RVM = null; RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null; MFX = null; FXD = null;
+    G.active = false; NET = null; RVM = null; BOSS = null; RB = null; RBV = null; G.rb = null; CF = null; CFV = null; G.ctf = null; MFX = null; FXD = null;
     ES.audio.music.muffle(false); ES.audio.music.stop(0.15);
     cancelAnimationFrame(raf);
     clearTimeout(closeTimer); clearTimeout(relockTimer);
@@ -684,13 +700,13 @@
         const tca = ((e.x - ox) * dx + (e.z - oz) * dz) / dxz2;
         if (tca <= 0) continue;
         const px = ox + dx * tca - e.x, pz = oz + dz * tca - e.z, d2 = px * px + pz * pz;
-        const R = 0.42 * radiusMul;
+        const R = (e.boss ? ES.BOSS.HIT_R : 0.42) * radiusMul;
         if (d2 >= R * R) continue;
         const th = tca - Math.sqrt((R * R - d2) / dxz2);
         if (th < 0 || th >= bt) continue;
         const hy = oy + dy * th - e.y;
-        if (hy < 0 || hy > 1.95) continue;
-        bt = th; best = e; head = hy > 1.42;
+        if (hy < 0 || hy > (e.boss ? ES.BOSS.HIT_H : 1.95)) continue;
+        bt = th; best = e; head = !e.boss && hy > 1.42;
       }
     }
     return { t: bt, target: best, head: head };
@@ -698,6 +714,7 @@
 
   G.damage = function (target, amt, attacker, head) {
     if (!target.alive || target.protT > 0 || S.phase !== 'play' || (RB && RB.eng.st.ph !== 0)) return false;       // no tagging while the round banner shows
+    if (target.boss) return !!(BOSS && BOSS.eng.hit(attacker, amt));                  // the giant robot: only hurt while it is stunned
     target.hp -= amt; target.flashT = 0.1;
     if (target.isPlayer) {
       S.sinceHurt = 0; S.dmgFlash = Math.min(0.8, 0.35 + amt / 60);
@@ -989,6 +1006,7 @@
       const earn = S.streak > 0 && S.streak % 3 === 0;
       fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (perk ? ' (+' + perk + ' level perk)' : '') + (S.streak === 5 ? '<br><b>🔥 On fire! 5 in a row!</b>' : (S.streak === 10 ? '<br><b>⚡ UNSTOPPABLE! 10 in a row!</b>' : '')) + (S.qMission ? '<br><b>' + RB_TXT[S.qMission].done + '</b>' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
       if (S.qMission) rbDo(S.qMission);
+      if (BOSS) { if (NET) netSend({ t: 'ba' }); else BOSS.eng.answer(player); }          // Boss Round: every right answer breaks the shield a little
       if (earn) setTimeout(function () { if (S && S.phase === 'play') earnWeapon(); }, 1150);
       ES.audio.sfx('correct');
       setTimeout(function () { ES.audio.sfx('reload'); }, 520); setTimeout(function () { ES.audio.sfx('reload', 0.9); }, 800);   // click-clack: blaster reloaded
@@ -1080,7 +1098,7 @@
     clearTimeout(closeTimer);
     if (S.qOpen) { S.qOpen = false; show('qp', false); }
     ES.audio.music.muffle(false); ES.audio.music.stop(0.4);
-    show('ov-death', false); show('ov-pause', false);
+    show('ov-death', false); show('ov-pause', false); show('boss-bar', false);
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) { /* ignore */ }
     let outcome = 'draw';
     const mine = S.score[myTeam()], other = S.score[1 - myTeam()];
@@ -1089,7 +1107,7 @@
     S.prog = null;                                       // XP, level-ups and badges for this match (see js/progress.js)
     try {
       const st2 = S.stats;
-      S.prog = ES.progress ? ES.progress.award({ kills: st2.kills, deaths: st2.deaths, shots: st2.shots, hits: st2.hits, qAsked: st2.qAsked, qRight: st2.qRight, bestStreak: st2.bestStreak, revives: st2.revives, bySubj: st2.bySubj, outcome: outcome }) : null;
+      S.prog = ES.progress ? ES.progress.award({ kills: st2.kills, deaths: st2.deaths, shots: st2.shots, hits: st2.hits, qAsked: st2.qAsked, qRight: st2.qRight, bestStreak: st2.bestStreak, revives: st2.revives, boss: !!BOSS, bySubj: st2.bySubj, outcome: outcome }) : null;
     } catch (e) { S.prog = null; }
     buildEndScreen(outcome);
     show('ov-end', true);
@@ -1129,9 +1147,9 @@
 
   function buildEndScreen(outcome) {
     const s = S.stats;
-    $('end-title').textContent = outcome === 'win' ? '🏆 VICTORY!' : (outcome === 'lose' ? 'Good try!' : "It's a draw!");
+    $('end-title').textContent = BOSS ? (outcome === 'win' ? '🤖 ROBOT DEFEATED!' : 'The robot survived!') : (outcome === 'win' ? '🏆 VICTORY!' : (outcome === 'lose' ? 'Good try!' : "It's a draw!"));
     $('end-title').className = 'end-title ' + outcome;
-    $('end-score').innerHTML = '<span style="color:' + ES.TEAMS[0].css + '">Blue ' + S.score[0] + '</span> &nbsp;–&nbsp; <span style="color:' + ES.TEAMS[1].css + '">' + S.score[1] + ' Red</span>';
+    if (BOSS) $('end-score').textContent = outcome === 'win' ? 'The class beat the giant robot! 🎉' : 'Try again – answer faster to break the shield! 💪'; else $('end-score').innerHTML = '<span style="color:' + ES.TEAMS[0].css + '">Blue ' + S.score[0] + '</span> &nbsp;–&nbsp; <span style="color:' + ES.TEAMS[1].css + '">' + S.score[1] + ' Red</span>';
     const acc = s.shots ? Math.round(100 * s.hits / s.shots) : 0;
     const qacc = s.qAsked ? Math.round(100 * s.qRight / s.qAsked) : 0;
     const stats = [['🎯', s.kills, 'Tags'], ['💥', s.deaths, 'Times tagged'], ['🔫', acc + '%', 'Shot accuracy'], ['🧠', s.qRight + '/' + s.qAsked, 'Questions right']];
@@ -1336,6 +1354,7 @@
     updateMapFx(dt);
     if (RBV) updateRB(dt);
     if (CFV) updateCF(dt);
+    if (BOSS) updateBoss(dt);
     if (world && world.ctf && sunLight && gfx.shadows && player) {          // the long arena is bigger than the shadow box: the shadow box follows you
       const tx = Math.round(player.x / 4) * 4, tz = Math.round(player.z / 4) * 4;
       sunLight.target.position.set(tx, 0, tz); sunLight.position.set(tx + 25, 45, tz + 15);
@@ -1365,10 +1384,13 @@
     const slow = S.qOpen && st.answerMode === 'slow';
     const wdt = slow ? dt * 0.15 : dt;
     if (CF) { CF.eng.update(dt); S.score[0] = CF.eng.st.caps[0]; S.score[1] = CF.eng.st.caps[1]; }      // Capture the Flag: flags run in real time, score = captures
+    if (BOSS) { if (soloBossTick(dt)) return; }                       // Boss Round (solo): the robot's rules, the bot friends' help, win / lose
     if (RB) {                                          // Rescue & Bomb: the rules engine keeps the round clock + bomb (real time, so slow-motion answering cannot freeze the bomb)
       RB.eng.update(dt);
       const rs = RB.eng.st; S.score[0] = rs.wins[0]; S.score[1] = rs.wins[1]; S.timeLeft = rs.tLeft;
       if (rs.ph === 2) { endMatch('rounds'); return; }
+    } else if (BOSS) {
+      S.timeLeft = BOSS.eng.st.tLeft; announceClock();
     } else {
       S.timeLeft -= wdt; announceClock();
       if (S.timeLeft <= 0) { S.timeLeft = 0; endMatch('time'); return; }
@@ -1535,9 +1557,9 @@
   /* Gentle push so fighters do not stand inside each other */
   function separate() {
     for (let i = 0; i < ents.length; i++) {
-      const a = ents[i]; if (!a.alive) continue;
+      const a = ents[i]; if (!a.alive || a.boss) continue;
       for (let j = i + 1; j < ents.length; j++) {
-        const b = ents[j]; if (!b.alive) continue;
+        const b = ents[j]; if (!b.alive || b.boss) continue;
         const dx = b.x - a.x, dz = b.z - a.z, d2 = dx * dx + dz * dz;
         if (d2 < 0.64 && d2 > 1e-6) {
           const d = Math.sqrt(d2), f = (0.8 - d) / 2 / d;
@@ -1558,6 +1580,7 @@
         if (e.deathT > 0) { e.deathT -= dt; const s = Math.max(0.01, e.deathT / 0.5); m.scale.set(s, s, s); m.rotation.y += dt * 12; if (e.deathT <= 0) m.visible = false; }
         continue;
       }
+      if (e.boss) { m.visible = true; m.position.set(e.x, e.y, e.z); m.rotation.y = e.yaw; continue; }      // the robot is posed in updateBoss()
       m.visible = e.protT > 0 ? (Math.floor(S.timeLeft * 12) % 2 === 0) : true;
       m.position.set(e.x, e.y, e.z); m.rotation.y = e.yaw;
       e.phase += e.speed * dt * 2.2;
@@ -1619,14 +1642,16 @@
     $('toast').classList.remove('show'); $('feed').innerHTML = ''; $('qm-log').innerHTML = '';
     $('radar').classList.toggle('hidden', false);
     const ctrl = $('ready-look'); if (ctrl) ctrl.textContent = st.lookMode === 'lock' ? 'Mouse = look & aim  ·  Left click = fire' : 'Hold RIGHT mouse button (or arrow keys) to look  ·  Left click or F = fire';
-    setText('sc-target', RB ? 'Round 1 · first to ' + RB.eng.need : (CF ? 'Most captures wins' : 'First to ' + S.target));
+    setText('sc-target', BOSS ? 'Boss Round' : RB ? 'Round 1 · first to ' + RB.eng.need : (CF ? 'Most captures wins' : 'First to ' + S.target));
     const goal = $('ready-goal');
     if (goal) {
       if (RB) goal.textContent = myTeam() === 0 ? '🔵 Blue: free the 🆘 hostage and bring them to the blue zone, or defuse the 💣! Best of ' + RB.cfg.rounds + ' rounds.' : '🔴 Red: plant the 💣 at the site and keep it safe for 15 seconds! Best of ' + RB.cfg.rounds + ' rounds.';
+      else if (BOSS) goal.textContent = '🤖 The whole class is ONE team! Answer questions (R) to break the giant robot\'s shield. When it is stunned, everybody SHOOT it! Empty its 3 health bars before time runs out.';
       else if (CF) goal.textContent = (myTeam() === 0 ? '🔵 Blue: ' : '🔴 Red: ') + 'grab the ' + (myTeam() === 0 ? 'RED' : 'BLUE') + ' 🚩 (press E next to it, answer a question) and carry it to YOUR base! Most captures wins.';
       else goal.textContent = NET ? 'You are on the ' + ES.TEAMS[NET.team].name + '. Tag the ' + ES.TEAMS[1 - NET.team].name + '!' : 'Tag the Red Team before time runs out!';
     }
     show('ready-rb', !!RB || !!CF);
+    show('boss-bar', false);
     const rr = $('ready-rb'); if (rr) rr.innerHTML = CF ? '<kbd>E</kbd> = <b>grab the enemy flag (answer a question next to it)</b>' : '<kbd>E</kbd> = <b>rescue / plant / defuse (answer a question next to the 🆘 or 💣)</b>';
     const fxl = $('ready-fx'); if (fxl) { fxl.textContent = FXD ? FXD.text : ''; show('ready-fx', !!FXD); }
     show('pause-net', !!NET);
@@ -1700,9 +1725,9 @@
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (!e.alive || e.isPlayer) continue;
-      if (e.team !== myTeam() && !st.radar) continue;
+      if (e.team !== myTeam() && !st.radar && !e.boss) continue;
       c.fillStyle = e.team === myTeam() ? '#58a6ff' : '#ff6a45';
-      c.beginPath(); c.arc(66 + e.x * s, 66 + e.z * s, 3, 0, 7); c.fill();
+      c.beginPath(); c.arc(66 + e.x * s, 66 + e.z * s, e.boss ? 6 : 3, 0, 7); c.fill();
     }
     if (player.alive) {
       const px = 66 + player.x * s, pz = 66 + player.z * s;
@@ -1718,7 +1743,7 @@
     [0, 1].forEach(function (team) {
       const col = document.createElement('div'); col.className = 'sbcol';
       const h = document.createElement('h3'); h.textContent = ES.TEAMS[team].name + ' – ' + S.score[team]; h.style.background = ES.TEAMS[team].css; col.appendChild(h);
-      ents.filter(function (e) { return e.team === team; }).sort(function (a, b) { return b.kills - a.kills; }).forEach(function (e) {
+      ents.filter(function (e) { return e.team === team && !e.boss; }).sort(function (a, b) { return b.kills - a.kills; }).forEach(function (e) {
         const r = document.createElement('div'); r.className = 'sbrow' + (e.isPlayer ? ' me' : '');
         const n = document.createElement('span'); n.textContent = e.name + (e.alive ? '' : ' 💤');
         const k = document.createElement('span'); k.textContent = e.kills + ' / ' + e.deaths;
@@ -2141,6 +2166,7 @@
     S.timeLeft = m.tl;
     if (typeof m.cr === 'number') S.crMask = m.cr;
     if (CF && m.cf) CF.eng.apply(m.cf);
+    if (BOSS && m.bs) BOSS.eng.apply(m.bs);
     if (RB && m.rb) RB.eng.apply(m.rb);                     // Rescue & Bomb: copy the referee's round state first, then react to the events
     netPhase(m.ph, m.cd);
     for (let i = 0; i < m.ev.length; i++) netEvent(m.ev[i]);
@@ -2189,6 +2215,8 @@
         ES.audio.sfx('rb_rescue', 0.8);
         burst(v.x, v.y + 1, v.z, 0x4ade80, 16);
       }
+    } else if (k === 'bs') {
+      bossEffects(ev[1], ev[2], ev[3]);
     } else if (k === 'qm') {
       showQm(ev[1], ev[2], ev[3]);
     } else if (k === 'rb') {
@@ -2304,6 +2332,135 @@
     }
   }
 
+
+  /* =====================================================================
+     BOSS ROUND (see js/boss.js for the rules)
+     The robot is one small group of boxes (about 14 meshes), plus a pool of 8 energy balls and 2 warning rings.
+     ===================================================================== */
+  function buildBossMesh() {
+    const root = new T.Group(), u = root.userData;
+    const lam = function (c) { return new T.MeshLambertMaterial({ color: c }); };
+    const bas = function (c, o) { return new T.MeshBasicMaterial({ color: c, transparent: o !== undefined, opacity: o === undefined ? 1 : o, depthWrite: o === undefined, fog: false }); };
+    const box = function (w, h, d, mat, x, y, z, par) { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); (par || root).add(m); return m; };
+    const metal = lam(0x5b6b86), dark = lam(0x2a3347), red = lam(0xc0392b);
+    u.legL = box(0.95, 1.9, 0.95, dark, -0.85, 0.95, 0); u.legR = box(0.95, 1.9, 0.95, dark, 0.85, 0.95, 0);
+    u.torso = new T.Group(); u.torso.position.y = 3.0; root.add(u.torso);
+    box(2.6, 1.9, 1.5, metal, 0, 0, 0, u.torso);                          // chest
+    box(2.7, 0.35, 1.6, red, 0, 0.78, 0, u.torso);                        // red stripe
+    u.core = box(0.7, 0.7, 0.2, bas(0x44e0ff), 0, -0.05, 0.78, u.torso);   // the glowing core (flashes when the robot is stunned)
+    u.head = box(1.2, 0.95, 1.1, metal, 0, 1.55, 0.05, u.torso);
+    u.eyes = box(0.95, 0.22, 0.12, bas(0xff3b2e), 0, 1.6, 0.62, u.torso);
+    box(0.12, 0.7, 0.12, dark, 0.45, 2.3, 0, u.torso);                    // antenna
+    u.armL = new T.Group(); u.armL.position.set(-1.75, 0.5, 0); u.torso.add(u.armL); box(0.8, 1.9, 0.8, metal, 0, -0.8, 0, u.armL);
+    u.armR = new T.Group(); u.armR.position.set(1.75, 0.5, 0); u.torso.add(u.armR); box(0.8, 1.9, 0.8, metal, 0, -0.8, 0, u.armR);
+    u.cannon = box(0.7, 0.7, 1.5, dark, 0, -1.7, 0.7, u.armR);            // the cannon (glows before it fires)
+    u.cannonTip = box(0.4, 0.4, 0.2, bas(0xff7a2e), 0, -1.7, 1.5, u.armR);
+    u.shield = new T.Mesh(new T.SphereGeometry(3.2, 14, 10), bas(0x5ab8ff, 0.2)); u.shield.position.y = 2.7; root.add(u.shield);
+    const lab = makeNameSprite('🤖 GIGA-BOT', '#c0392b', true); lab.scale.set(3, 0.75, 1); lab.position.y = 6.3; root.add(lab);
+    return root;
+  }
+  function buildBossFx() {
+    const V = BOSS.V = { orbs: [], t: 0 };
+    const orbMat = new T.MeshBasicMaterial({ color: 0xff5a2e, fog: false }), shell = new T.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.35, depthWrite: false, fog: false });
+    const og = new T.SphereGeometry(0.42, 10, 8), sg = new T.SphereGeometry(0.75, 10, 8);
+    for (let i = 0; i < ES.BOSS.MAX_ORBS; i++) { const g = new T.Group(); g.add(new T.Mesh(og, orbMat), new T.Mesh(sg, shell)); g.visible = false; scene.add(g); V.orbs.push(g); }
+    const ringMat = function (c) { return new T.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.45, depthWrite: false, side: T.DoubleSide, fog: false }); };
+    V.stomp = new T.Mesh(new T.RingGeometry(ES.BOSS.STOMP_R - 0.35, ES.BOSS.STOMP_R, 40), ringMat(0xff3a2a)); V.stomp.rotation.x = -Math.PI / 2; V.stomp.visible = false; scene.add(V.stomp);
+    V.mark = new T.Mesh(new T.RingGeometry(0.9, 1.25, 24), ringMat(0xff9a2a)); V.mark.rotation.x = -Math.PI / 2; V.mark.visible = false; scene.add(V.mark);
+    const bar = $('boss-bar'); V.last = '';
+  }
+  /* every frame: pose the robot, move the energy balls, draw the warnings, update the bars */
+  function updateBoss(dt) {
+    const st = BOSS.eng.st, V = BOSS.V, e = BOSS.ent, m = e.mesh;
+    if (!V) return;
+    V.t += dt;
+    if (m && m.visible) {
+      const u = m.userData, weak = st.weak > 0, walking = e.speed > 0.3;
+      const kneel = weak ? 1.15 : 0, tgt = (st.atk === 2 ? 0.9 * Math.min(1, (1 - st.atkT / 1.15)) : 0);
+      u.torso.position.y += ((3.0 - kneel + tgt) - u.torso.position.y) * Math.min(1, dt * 8);
+      u.torso.rotation.x += ((weak ? 0.45 : 0) - u.torso.rotation.x) * Math.min(1, dt * 6);
+      const sw = walking && !weak ? Math.sin(V.t * 3.2) * 0.5 : 0; u.legL.rotation.x = sw; u.legR.rotation.x = -sw;
+      u.armR.rotation.x += (((st.atk === 1) ? -1.35 : -0.2) - u.armR.rotation.x) * Math.min(1, dt * 9);
+      u.armL.rotation.x = -sw * 0.6;
+      u.cannonTip.material.color.setHex(st.atk === 1 && Math.floor(V.t * 10) % 2 === 0 ? 0xffffff : 0xff7a2e);
+      u.core.material.color.setHex(weak ? (Math.floor(V.t * 6) % 2 ? 0xffe14a : 0xffffff) : 0x44e0ff);
+      u.eyes.material.color.setHex(weak ? 0x555555 : 0xff3b2e);
+      u.shield.visible = !weak && st.ph === 0; u.shield.material.opacity = 0.14 + 0.1 * Math.abs(Math.sin(V.t * 2));
+      e.flashT = 0;
+    }
+    for (let i = 0; i < V.orbs.length; i++) {
+      const o = st.orbs[i], g = V.orbs[i];
+      if (!o) { g.visible = false; continue; }
+      g.visible = true; g.position.set(o.x, o.y, o.z); g.children[1].scale.setScalar(1 + 0.15 * Math.sin(V.t * 18 + i));
+    }
+    V.stomp.visible = st.atk === 2 && st.ph === 0 && !!m;
+    if (V.stomp.visible) { V.stomp.position.set(e.x, (e.y || 0) + 0.08, e.z); V.stomp.material.opacity = 0.25 + 0.3 * Math.abs(Math.sin(V.t * 12)); }
+    const tg = (st.atk === 1 && st.ph === 0) ? eidEnt(st.tgt) : null;
+    V.mark.visible = !!tg;
+    if (tg) { V.mark.position.set(tg.x, (tg.y || 0) + 0.1, tg.z); V.mark.scale.setScalar(1 + 0.15 * Math.sin(V.t * 14)); }
+    updateBossHud(st);
+  }
+  function updateBossHud(st) {
+    show('boss-bar', S.phase === 'play' || S.phase === 'count');
+    const key = [st.bar, st.hp, st.armor, st.armorMax, Math.ceil(st.weak), st.ph].join(',');
+    if (BOSS.V.last === key) return;
+    BOSS.V.last = key;
+    const hpPct = Math.max(0, Math.min(100, 100 * st.hp / Math.max(1, st.hpBar)));
+    $('bb-hp-fill').style.width = hpPct + '%';
+    $('bb-bars').textContent = '  ·  health bar ' + Math.min(3, st.bar + 1) + ' of 3';
+    const weak = st.weak > 0;
+    $('bb-sh-fill').style.width = (weak ? 0 : 100 * st.armor / Math.max(1, st.armorMax)) + '%';
+    $('bb-msg').textContent = weak ? '💥 STUNNED! EVERYBODY SHOOT IT!  ' + Math.ceil(st.weak) + ' s' : '🛡️ Shield ' + st.armor + ' / ' + st.armorMax + '  ·  answer questions (R) to break it!';
+    $('boss-bar').classList.toggle('weak', weak);
+    setText('sc-target', 'Boss Round');
+  }
+  /* sounds, banners and effects (solo: called by the rules engine; class: sent by the referee) */
+  function bossEffects(name, a, b) {
+    if (!BOSS || !S) return;
+    const e = BOSS.ent, st = BOSS.eng.st, who = eidEnt(a), nm = who ? who.name : 'Someone';
+    if (name === 'chip') {
+      if (!who || !who.isPlayer) toast('🛡️ ' + nm + ' cracked the shield!  ' + st.armor + ' left', 1.6);
+      ES.audio.sfx('rb_rescue', 0.5);
+    } else if (name === 'weak') {
+      showRound('💥 STUNNED!', 'Everybody SHOOT the robot! (12 seconds)', 'blue', 2.6);
+      ES.audio.sfx('bomb_boom', 0.8); burst(e.x, 3, e.z, 0xffe14a, 22);
+    } else if (name === 'armor') {
+      toast('🛡️ The shield is back! Answer questions (R) to break it again', 3);
+    } else if (name === 'bar') {
+      showRound('🤖 THE ROBOT GETS UP!', 'Health bar ' + (a + 1) + ' of 3 – it is faster now!', 'red', 2.8);
+      ES.audio.sfx('wrong');
+    } else if (name === 'windup') {
+      ES.audio.sfx('bomb_fast', 0.5);
+      if (a === 2) toast('⚠️ STOMP! Run away from the robot!', 1.4);
+    } else if (name === 'orb') {
+      ES.audio.sfx('boom', 0.35);
+    } else if (name === 'stomp') {
+      burst(e.x, 0.6, e.z, 0xff8a3c, 24); ES.audio.sfx('bomb_boom', 0.9);
+    } else if (name === 'orbhit') {
+      const v = eidEnt(a); if (v) burst(v.x, (v.y || 0) + 1, v.z, 0xff5a2e, 10);
+    } else if (name === 'block') {
+      const now = performance.now();
+      if (now - BOSS.lastBlock > 2500) { BOSS.lastBlock = now; toast('🛡️ Shield is up! Answer questions (R) to break it first', 2.2); }
+    } else if (name === 'win') {
+      burst(e.x, 3, e.z, 0xffe14a, 30); burst(e.x, 4, e.z, 0xff8a3c, 26); burst(e.x, 2, e.z, 0xffffff, 18);
+      ES.audio.sfx('bomb_boom', 1);
+    }
+  }
+  /* solo: the robot's rules run here. Returns true if the match ended. */
+  function soloBossTick(dt) {
+    const eng = BOSS.eng, st = eng.st;
+    eng.update(dt);
+    for (let i = 0; i < ents.length; i++) {                      // the bot friends answer a question now and then
+      const b = ents[i];
+      if (!b.isBot || b.team !== 0 || !b.alive || st.weak > 0) continue;
+      BOSS.chipT[b.eid] = (BOSS.chipT[b.eid] === undefined ? 10 + Math.random() * 8 : BOSS.chipT[b.eid]) - dt;
+      if (BOSS.chipT[b.eid] <= 0) { BOSS.chipT[b.eid] = 12 + Math.random() * 8; eng.answer(b); }
+    }
+    if (st.ph === 1) { S.score = [1, 0]; endMatch('boss-win'); return true; }
+    if (st.ph === 2) { S.score = [0, 1]; endMatch('boss-lose'); return true; }
+    return false;
+  }
+
   G.netRespawn = function (m) {
     if (!NET || !G.active || !S) return;
     const p = player;
@@ -2330,8 +2487,9 @@
     if (!NET || !NET.rows) { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
     [0, 1].forEach(function (team) {
+      if (BOSS && team === 1) return;
       const col = document.createElement('div'); col.className = 'sbcol';
-      const h = document.createElement('h3'); h.textContent = ES.TEAMS[team].name + ' – ' + S.score[team]; h.style.background = ES.TEAMS[team].css; col.appendChild(h);
+      const h = document.createElement('h3'); h.textContent = (BOSS ? '🤖 The class' : ES.TEAMS[team].name + ' – ' + S.score[team]); h.style.background = ES.TEAMS[team].css; col.appendChild(h);
       NET.rows.filter(function (r) { return r.team === team; }).sort(function (a, b) { return b.kills - a.kills; }).forEach(function (r) {
         const row = document.createElement('div'); row.className = 'sbrow' + (r.eid === NET.you ? ' me' : '');
         const n = document.createElement('span'); n.textContent = (r.bot ? '🤖 ' : '') + r.name;
@@ -2358,7 +2516,7 @@
     setFire: function (v) { fireHeld = v; },
     choose: chooseAnswer, closeQ: closeQuestion,
     end: endMatch, get net() { return NET; }, get rb() { return RB; }, get rbv() { return RBV; }, get cf() { return CF; }, get cfv() { return CFV; }, ctfDo: rbDo, rbDo: rbDo, openMission: openMission,
-    give: giveWeapon, shoot: playerShoot,
+    give: giveWeapon, shoot: playerShoot, get boss() { return BOSS; },
     step: function (n, dt) { for (let i = 0; i < n; i++) tick(dt); }   // run the game without drawing (used for fast automatic tests)
   };
 })();

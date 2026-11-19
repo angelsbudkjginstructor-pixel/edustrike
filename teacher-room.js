@@ -44,13 +44,13 @@
   function loadSettings() {
     try {
       const j = JSON.parse(localStorage.getItem(SETKEY) || '{}');
-      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
+      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-boss'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
       if (Array.isArray(j.off)) { off = {}; j.off.forEach(function (k) { off[String(k)] = true; }); }
     } catch (e) { /* ignore */ }
   }
   function saveSettings() {
     try {
-      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm'].forEach(function (id) { j[id] = $(id).value; });
+      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-boss'].forEach(function (id) { j[id] = $(id).value; });
       j.off = Object.keys(off);
       localStorage.setItem(SETKEY, JSON.stringify(j));
     } catch (e) { /* ignore */ }
@@ -113,7 +113,9 @@
     const names = { wait: 'waiting for students to click START…', count: 'starting…', play: 'LIVE', ended: 'finished' };
     $('l-state').textContent = names[i.phase] || '';
     $('l-time').textContent = '⏱ ' + mmss(i.timeLeft);
-    $('l-score').textContent = i.rb ? '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (round ' + i.rb.round + ' · first to ' + i.rb.need + ' rounds' + (i.rb.bomb === 1 && i.rb.rph === 0 ? ' · 💣 ' + Math.ceil(i.rb.bombT) + 's' : '') + ')'
+    const bi = i.boss;
+    $('l-score').textContent = bi ? '🤖 Robot: health bar ' + Math.min(3, bi.bar + 1) + ' of 3  ·  ' + (bi.weak > 0 ? '💥 STUNNED (' + Math.ceil(bi.weak) + ' s)' : '🛡️ shield ' + bi.armor + ' / ' + bi.armorMax) + (bi.ph === 1 ? '  ·  DEFEATED!' : '')
+                                : i.rb ? '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (round ' + i.rb.round + ' · first to ' + i.rb.need + ' rounds' + (i.rb.bomb === 1 && i.rb.rph === 0 ? ' · 💣 ' + Math.ceil(i.rb.bombT) + 's' : '') + ')'
                                 : i.ctf ? '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (🚩 captures · most captures wins' + (i.ctf.f[0] || i.ctf.f[1] ? ' · a flag is on the move' : '') + ')'
                                 : '🔵 ' + i.score[0] + '  –  ' + i.score[1] + ' 🔴   (first to ' + i.target + ')';
     $('l-ready').textContent = i.phase === 'wait' ? i.ready + ' / ' + i.humans + ' ready' : i.humans + ' students playing';
@@ -141,7 +143,7 @@
     saveSettings();
     $('r-start-err').textContent = '';
     const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value, topics: chosenTopics(),
-                               mode: ['rb', 'ctf'].indexOf($('m-mode').value) >= 0 ? $('m-mode').value : 'normal', rounds: +$('m-rounds').value, rtime: +$('m-rmin').value, revive: $('m-revive').value !== 'off', qm: $('m-qm').value !== 'off' });
+                               mode: ['rb', 'ctf', 'boss'].indexOf($('m-mode').value) >= 0 ? $('m-mode').value : 'normal', boss: $('m-boss').value, rounds: +$('m-rounds').value, rtime: +$('m-rmin').value, revive: $('m-revive').value !== 'off', qm: $('m-qm').value !== 'off' });
     if (!r.ok) { $('r-start-err').textContent = r.error; return; }
     showMatchUi(true); renderLive(ES.match.info());
   });
@@ -151,11 +153,12 @@
   $('m-map').innerHTML = ES.MAPS_LIST.map(function (m) { return '<option value="' + m.id + '">' + m.name + ' - ' + m.desc + '</option>'; }).join('');
   /* Rescue & Bomb: show its options (rounds, time per round) and hide "win by tagging / time limit" */
   function modeUi() {
-    const mode = $('m-mode').value, rb = mode === 'rb', ctf = mode === 'ctf';
+    const mode = $('m-mode').value, rb = mode === 'rb', ctf = mode === 'ctf', boss = mode === 'boss';
     Array.prototype.forEach.call(document.querySelectorAll('.rb-only'), function (el) { el.classList.toggle('hidden', !rb); });
     Array.prototype.forEach.call(document.querySelectorAll('.nm-only'), function (el) { el.classList.toggle('hidden', rb); });
-    Array.prototype.forEach.call(document.querySelectorAll('.tg-only'), function (el) { el.classList.toggle('hidden', rb || ctf); });     // Capture the Flag: only the time limit is used (the winner is the team with most captures)
+    Array.prototype.forEach.call(document.querySelectorAll('.tg-only'), function (el) { el.classList.toggle('hidden', rb || ctf || boss); });     // Capture the Flag: only the time limit is used (the winner is the team with most captures)
     Array.prototype.forEach.call(document.querySelectorAll('.ctf-only'), function (el) { el.classList.toggle('hidden', !ctf); });
+    Array.prototype.forEach.call(document.querySelectorAll('.boss-only'), function (el) { el.classList.toggle('hidden', !boss); });
   }
   $('m-mode').addEventListener('change', function () { modeUi(); saveSettings(); });
   loadSettings(); modeUi(); renderQuestions();

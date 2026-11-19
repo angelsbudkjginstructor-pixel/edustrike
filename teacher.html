@@ -120,7 +120,9 @@
         <h3 class="r-h">⚔️ Match settings</h3>
         <div class="r-grid">
           <label>Players per team<select id="m-size"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>8</option><option>10</option><option>12</option><option>15</option></select></label>
-          <label>Game mode<select id="m-mode"><option value="normal" selected>⚔️ Normal – tag the other team</option><option value="rb">🆘💣 Rescue &amp; Bomb – rounds</option><option value="ctf">🚩 Capture the Flag – long arena</option></select></label>
+          <label>Game mode<select id="m-mode"><option value="normal" selected>⚔️ Normal – tag the other team</option><option value="rb">🆘💣 Rescue &amp; Bomb – rounds</option><option value="ctf">🚩 Capture the Flag – long arena</option><option value="boss">🤖 Boss Round – the whole class vs a giant robot</option></select></label>
+          <label class="boss-only hidden" style="grid-column:1/-1;font-weight:600">🤖 Everybody is on ONE team. Right answers (R) break the robot's shield. When it is stunned, everybody shoots it! Tag it 3 times to win before time runs out. Friends can revive each other.</label>
+          <label class="boss-only hidden">Robot strength<select id="m-boss"><option value="gentle">😀 Gentle</option><option value="normal" selected>😎 Normal</option><option value="tough">🔥 Tough</option></select></label>
           <label class="ctf-only hidden" style="grid-column:1/-1;font-weight:600">🚩 Capture the Flag plays on a LONGER version of the map you choose (about 1.5× longer). The team with the most captures when time runs out wins.</label>
           <label class="rb-only hidden">Rounds (best of)<select id="m-rounds"><option>1</option><option selected>3</option><option>5</option><option>7</option><option>9</option></select></label>
           <label class="rb-only hidden">Time per round<select id="m-rmin"><option value="2">2 minutes</option><option value="3" selected>3 minutes</option><option value="4">4 minutes</option><option value="5">5 minutes</option></select></label>
@@ -176,6 +178,7 @@
 <script src="bots.js"></script>
 <script src="rb.js"></script>
 <script src="ctf.js"></script>
+<script src="boss.js"></script>
 <script src="match.js"></script>
 <script src="teacher.js"></script>
 <script src="teacher-room.js"></script>

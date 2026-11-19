@@ -72,13 +72,13 @@
           const tca = ((e.x - ox) * dx + (e.z - oz) * dz) / dxz2;
           if (tca <= 0) continue;
           const px = ox + dx * tca - e.x, pz = oz + dz * tca - e.z, d2 = px * px + pz * pz;
-          const R = 0.42 * radiusMul;
+          const R = (e.boss ? ES.BOSS.HIT_R : 0.42) * radiusMul;
           if (d2 >= R * R) continue;
           const th = tca - Math.sqrt((R * R - d2) / dxz2);
           if (th < 0 || th >= bt) continue;
           const hy = oy + dy * th - e.y;
-          if (hy < 0 || hy > 1.95) continue;
-          bt = th; best = e; head = hy > 1.42;
+          if (hy < 0 || hy > (e.boss ? ES.BOSS.HIT_H : 1.95)) continue;
+          bt = th; best = e; head = !e.boss && hy > 1.42;
         }
       }
       return { t: bt, target: best, head: head };
@@ -88,6 +88,7 @@
     soundAt: function () { /* students make the sound themselves when they see the 'shot' event */ },
     damage: function (target, amt, attacker, head) {
       if (!target.alive || target.protT > 0 || M.phase !== 'play' || (M.rb && M.rb.st.ph !== 0)) return false;       // no tagging while the round banner shows
+      if (target.boss) return !!(M.boss && M.boss.hit(attacker, amt));                  // the giant robot: only hurt while it is stunned
       if (target.human && target.answering) amt *= 0.5;
       target.hp -= amt; target.sinceHurt = 0;
       if (target.human) M.ev.push(['hurt', target.eid, attacker ? attacker.eid : -1]);
@@ -118,15 +119,15 @@
   function separate() {
     const ents = M.ents;
     for (let i = 0; i < ents.length; i++) {
-      const a = ents[i]; if (!a.alive || a.human) continue;
+      const a = ents[i]; if (!a.alive || a.human || a.boss) continue;
       for (let j = 0; j < ents.length; j++) {
         if (i === j) continue;
         const b = ents[j]; if (!b.alive) continue;
         const dx = b.x - a.x, dz = b.z - a.z, d2 = dx * dx + dz * dz;
         if (d2 < 0.64 && d2 > 1e-6) {
-          const d = Math.sqrt(d2), f = (0.8 - d) / d * (b.human ? 1 : 0.5);   // humans are never pushed by the referee: only the bot moves away
+          const d = Math.sqrt(d2), f = (0.8 - d) / d * (b.human || b.boss ? 1 : 0.5);   // humans are never pushed by the referee: only the bot moves away
           a.x -= dx * f; a.z -= dz * f;
-          if (!b.human) { b.x += dx * f; b.z += dz * f; world.collide(b, P.radius); }
+          if (!b.human && !b.boss) { b.x += dx * f; b.z += dz * f; world.collide(b, P.radius); }
           world.collide(a, P.radius);
         }
       }
@@ -240,6 +241,16 @@
     M.ev.push(['rv', e.eid, t.eid, e.team]);
     ES.room.send(t.p, { t: 'respawn', eid: t.eid, x: r2(t.x), y: r2(t.y), z: r2(t.z), yaw: r2(t.yaw), rv: e.eid });
   }
+  /* BOSS ROUND: a student answered a question right: one point off the robot's shield (the referee's rules engine decides) */
+  function onBossAnswer(p) {
+    const e = p.ent; if (!M || !M.boss || M.phase !== 'play' || !e || !e.alive) return;
+    const now = performance.now(); if (now - (e.lastBa || 0) < 900) return; e.lastBa = now;
+    M.boss.answer(e);
+  }
+  function bossHook(name, a, b) {
+    if (!M) return;
+    M.ev.push(['bs', name, a === undefined ? 0 : a, b === undefined ? 0 : b]);
+  }
   /* KIND QUICK MESSAGES: only a number from the fixed list is accepted (nothing a student types is ever sent on) */
   function onQm(p, m) {
     const e = p.ent; if (!M || !M.qm || !e || (M.phase !== 'play' && M.phase !== 'count')) return;
@@ -288,11 +299,13 @@
     // the subtopics the teacher ticked (an empty list = every question); keep only sane text, and not too many
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map, ctf: s.mode === 'ctf' });
+    const bossMode = s.mode === 'boss';
     M = { revive: s.revive !== false, qm: s.qm !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
     G.rb = null; G.ctf = null;
+    if (s.mode === 'boss') humansP.forEach(function (p) { p.team = 0; });          // Boss Round: the whole class is ONE team
     if (s.mode === 'ctf' && world.flagSpots) {                      // Capture the Flag: a long arena, a flag at each base
       M.ctf = ES.createCTF({ spots: world.flagSpots, ents: function () { return M ? M.ents : []; }, hook: cfHook }); G.ctf = M.ctf;
     }
@@ -309,14 +322,24 @@
       M.ents.push(e); M.humans.push(e);
     });
     [0, 1].forEach(function (team) {
+      if (bossMode && team === 1) return;                                // no red team: the boss is the enemy
       const names = ES.BOT_NAMES[team].slice();
       for (let i = cnt[team]; i < s.teamSize; i++) M.ents.push(mkEnt(eid++, team, names.shift() || ('Bot ' + (i + 1)), false, s.diff));
     });
+    if (bossMode) {
+      const be = mkEnt(900, 1, 'GIGA-BOT', false, 'normal'); be.boss = true; be.isBot = false; be.hp = 100;
+      M.ents.push(be);
+      M.boss = ES.createBoss({
+        ent: be, allies: function () { return M ? M.ents.filter(function (a) { return a.team === 0; }) : []; }, humans: humansP.length, strength: s.boss, minutes: s.minutes,
+        world: world, hurt: function (a, amt) { G.damage(a, amt, null, false); }, hook: bossHook });
+      M.timeLeft = M.boss.st.tLeft; M.minutes = s.minutes;
+    }
     M.ents.forEach(function (e) { M.byEid[e.eid] = e; placeAtSpawn(e, used); });
+    if (bossMode) { const be = M.byEid[900]; be.x = 0; be.z = -22; be.y = 0; be.yaw = 0; }          // the robot starts at the far end of the arena
 
-    const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human, sk: e.p && e.p.sk ? e.p.sk : 'h0:n0' }; });
+    const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human, boss: !!e.boss, sk: e.p && e.p.sk ? e.p.sk : 'h0:n0' }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal'), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', rv: M.revive ? REVIVE_WAIT : 0, qm: M.qm ? 1 : 0, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : (M.boss ? 'boss' : 'normal')), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', rv: M.revive ? REVIVE_WAIT : 0, qm: M.qm ? 1 : 0, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
@@ -345,7 +368,7 @@
   function finish(reason) {
     if (!M || M.phase === 'ended') return;
     M.phase = 'ended'; M.reason = reason;
-    M.results = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, revives: e.revives, bot: !e.human }; });
+    M.results = M.ents.filter(function (e) { return !e.boss; }).map(function (e) { return { eid: e.eid, name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, revives: e.revives, bot: !e.human }; });
     sendSnap();                                           // the last events (the final kill) go out first
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, { t: 'end', reason: reason, sc: M.score.slice(), rows: M.results }); });
   }
@@ -362,7 +385,7 @@
       return [e.eid, r2(e.x), r2(e.y), r2(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)),
               (e.alive ? 1 : 0) | ((e.isBot ? (e.state === 'answer' || e.state === 'obj') : e.answering) ? 2 : 0) | (e.protT > 0 ? 4 : 0) | (weaponBits(e) << 3), Math.round(e.speed * 10) / 10];
     });
-    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask, rb: M.rb ? M.rb.pack() : 0, cf: M.ctf ? M.ctf.pack() : 0 };
+    const msg = { t: 'snap', n: ++seq, ph: M.phase, tl: Math.round(M.timeLeft * 10) / 10, cd: Math.round(M.countT * 10) / 10, sc: M.score, e: rows, ev: M.ev, cr: M.crateClock.mask, rb: M.rb ? M.rb.pack() : 0, cf: M.ctf ? M.ctf.pack() : 0, bs: M.boss ? M.boss.pack() : 0 };
     M.ev = [];
     M.humans.forEach(function (e) { if (e.p) ES.room.send(e.p, msg); });
   }
@@ -398,10 +421,18 @@
             e.sinceHurt += dt;
             if (!e.alive) { e.respawnT -= dt; if (e.respawnT <= 0) G.respawn(e); }
             else if (e.sinceHurt > P.regenDelay && e.hp < P.hp) e.hp = Math.min(P.hp, e.hp + P.regenRate * dt);
-          } else {
+          } else if (!e.boss) {
             G.ents = M.ents; G.world = world;
             ES.bots.update(G, e, dt);
+            if (M.boss && e.alive && M.boss.st.weak <= 0 && M.boss.st.ph === 0) {            // a bot friend also helps with a right answer now and then
+              e.chipT = (e.chipT === undefined ? 8 + rnd() * 10 : e.chipT) - dt;
+              if (e.chipT <= 0) { e.chipT = 14 + rnd() * 8; M.boss.answer(e); }
+            }
           }
+        }
+        if (M.boss) {                                     // Boss Round: the robot's rules engine runs here
+          M.boss.update(dt); M.timeLeft = M.boss.st.tLeft;
+          if (M.boss.st.ph === 1) { M.score[0] = 1; finish('boss-win'); } else if (M.boss.st.ph === 2) { M.score[1] = 1; finish('boss-lose'); }
         }
         separate();
         updateCrates(dt);
@@ -426,7 +457,8 @@
       perf: Math.round((M.loopAvg || 0) * 10) / 10, perfMax: Math.round(M.loopMax || 0),
       phase: M.phase, timeLeft: M.timeLeft, score: M.score.slice(), target: M.target, reason: M.reason,
       ready: M.humans.filter(function (e) { return e.p && e.ready; }).length, humans: total,
-      rows: M.ents.map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; }),
+      boss: M.boss ? { bar: M.boss.st.bar, hp: M.boss.st.hp, hpBar: M.boss.st.hpBar, armor: M.boss.st.armor, armorMax: M.boss.st.armorMax, weak: M.boss.st.weak, ph: M.boss.st.ph } : null,
+      rows: M.ents.filter(function (e) { return !e.boss; }).map(function (e) { return { name: e.name, team: e.team, kills: e.kills, deaths: e.deaths, bot: !e.human, alive: e.alive }; }),
       rb: M.rb ? { round: M.rb.st.round, need: M.rb.need, rounds: M.rb.st.rounds, rph: M.rb.st.ph, bomb: M.rb.st.b.s, bombT: M.rb.st.b.t, hostage: M.rb.st.h.s } : null,
       ctf: M.ctf ? { caps: M.ctf.st.caps.slice(), f: [M.ctf.st.f[0].s, M.ctf.st.f[1].s] } : null
     };
@@ -439,6 +471,7 @@
   ES.room.on('rb', onRb);
   ES.room.on('rv', onRevive);
   ES.room.on('qm', onQm);
+  ES.room.on('ba', onBossAnswer);
   ES.room.on('ready', function (p) { if (p.ent) p.ent.ready = true; });
   ES.room.on('quit', function (p) { humanLeft(p); });
   ES.room.on('leave', function (p) { humanLeft(p); });
