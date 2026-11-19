@@ -6,7 +6,7 @@
   'use strict';
   const ES = (window.ES = window.ES || {});
 
-  ES.VERSION = 'Stage 6 - Graphics upgrade (nicer Low/Medium/High, Ultra Realism)';
+  ES.VERSION = 'Stage 7B - My Profile + starter choices';
 
   /* Sound files you can drop in (put the files next to index.html on GitHub).
      name = the game event, files = the sound files for it (several files = a different one each time),
@@ -31,6 +31,9 @@
     bomb_boom: { files: ['sfx-bomb.mp3'],     gain: 1.2 }
   };
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
+  /* Saved progress (XP, levels, badges). Paste the web-app link of the Progress script here ONCE (see apps-script/Progress.gs). Empty = progress is saved only on each computer. */
+  ES.PROGRESS = { url: '' };
+
   ES.MUSIC_FILES = {
     play: 'music-thriller.mp3', gain: 1.0,
     lobby: 'music-lobby.mp3',       // plays on the student waiting screen ("Pick your team") until the teacher presses START

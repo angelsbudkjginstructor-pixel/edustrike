@@ -236,3 +236,49 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 
 /* Stage 5D: the map-effect tip on the ready screen */
 .mapfx{margin:6px 0 10px;padding:8px 12px;border-radius:12px;background:rgba(80,160,255,.18);border:2px solid rgba(120,190,255,.55);font-weight:700;font-size:1.02rem}
+
+/* ------------------------------------------------ my profile (Stage 6) */
+.pf-strip { font: inherit; font-weight: 800; cursor: pointer; margin: 0 auto 12px; display: block; padding: 8px 18px; border-radius: 999px; border: 2px solid rgba(255,255,255,.4); background: rgba(255,255,255,.12); color: #fff; font-size: 16px; }
+.pf-strip.in { background: linear-gradient(180deg,#ffd23f,#ffb300); color: #12203a; border-color: #ffd23f; }
+.pf-card { text-align: left; }
+.pf-card h2 { text-align: center; }
+.pf-head { display: flex; gap: 16px; align-items: center; }
+.pf-prev { width: 110px; height: 110px; flex: none; background: linear-gradient(180deg,#dbeaff,#f4f8ff); border-radius: 16px; image-rendering: pixelated; }
+.pf-who { flex: 1; min-width: 0; }
+.pf-name { font-size: 26px; font-weight: 900; }
+.pf-lv { font-size: 18px; font-weight: 800; color: #2f86ff; }
+.pf-bar { height: 16px; background: #e3ebf8; border-radius: 999px; overflow: hidden; margin: 6px 0 4px; }
+.pf-fill { height: 100%; background: linear-gradient(90deg,#4ade80,#22c55e); border-radius: 999px; transition: width .6s; }
+.pf-xp, .pf-save { font-size: 14px; font-weight: 700; color: #4a5a78; }
+.pf-stats { margin: 10px 0 4px; font-size: 15px; font-weight: 700; color: #4a5a78; }
+.pf-tabs { display: flex; gap: 6px; margin: 10px 0 8px; flex-wrap: wrap; }
+.pf-tab { font: inherit; font-weight: 800; cursor: pointer; border: 2px solid #c9d7ee; background: #f7faff; color: #12203a; border-radius: 10px; padding: 7px 14px; }
+.pf-tab.on { background: #2f86ff; border-color: #2f86ff; color: #fff; }
+.pf-body { max-height: 38vh; overflow-y: auto; padding-right: 4px; }
+.pf-h { margin: 8px 0 4px; font-size: 16px; }
+.pf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.pf-item { font: inherit; cursor: pointer; text-align: center; border: 3px solid #c9d7ee; border-radius: 12px; background: #fff; padding: 8px 4px; color: #12203a; display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.pf-item.on { border-color: #22c55e; background: #eafbe9; }
+.pf-item.lock { opacity: .55; cursor: not-allowed; }
+.pf-sw { width: 34px; height: 18px; border-radius: 6px; border: 2px solid rgba(0,0,0,.15); }
+.pf-in { font-weight: 800; font-size: 14px; } .pf-il { font-size: 12px; font-weight: 700; color: #4a5a78; }
+.pf-perk { display: flex; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #f1f5fb; margin-bottom: 6px; font-weight: 700; opacity: .6; }
+.pf-perk.on { opacity: 1; background: #eafbe9; } .pf-pl { min-width: 64px; }
+.pf-badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.pf-badge { text-align: center; padding: 8px 4px; border-radius: 12px; background: #f1f5fb; border: 2px dashed #c9d7ee; opacity: .6; }
+.pf-badge.has { opacity: 1; background: #fff8dc; border: 2px solid #ffd23f; }
+.pf-bi { font-size: 30px; } .pf-bn { font-weight: 900; font-size: 13px; } .pf-bd { font-size: 11px; color: #4a5a78; font-weight: 600; }
+.pf-form { display: flex; flex-direction: column; gap: 10px; max-width: 320px; margin: 10px auto 12px; }
+.pf-form input { font: inherit; font-size: 20px; padding: 10px 12px; border-radius: 12px; border: 3px solid #c9d7ee; text-align: center; color: #12203a; }
+.pf-msg { color: #c0392b; font-weight: 800; text-align: center; }
+.btn.ghost.dark { color: #12203a; border-color: #b8c6de; background: #eef3fb; }
+.card .btn.big { margin: 0 auto; display: block; }
+/* end screen: progress card */
+.pf-end { margin: 12px 0; padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg,#fff8dc,#fff1b8); border: 3px solid #ffd23f; text-align: left; }
+.pf-end h4 { margin: 0 0 6px; font-size: 18px; }
+.pf-gain { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; }
+.pf-total { font-size: 22px; font-weight: 900; color: #b45309; margin: 6px 0; }
+.pf-up { margin-top: 8px; padding: 6px 10px; border-radius: 10px; background: #fff; font-weight: 800; }
+.pf-awards { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.pf-award { padding: 6px 12px; border-radius: 999px; background: #12203a; color: #ffd23f; font-weight: 800; font-size: 14px; }
+.pf-signin-hint { margin: 10px 0; padding: 8px 12px; border-radius: 12px; background: #eef3fb; font-weight: 700; color: #4a5a78; }

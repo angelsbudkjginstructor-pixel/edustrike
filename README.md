@@ -171,3 +171,20 @@ A new game mode, in solo (vs bots) and in class matches. Choose **🚩 Capture t
 
 ## Waiting-room song
 - `music-lobby.mp3` (Aylex – “Born to Win”, free to use with credit from freetouse.com; credit is shown on the waiting screen; compressed to about 1.5 MB) plays on the student "Pick your team" screen, fades in, loops, follows the Music on/off and volume settings, and fades out when the match starts or the student leaves. It is only downloaded when a student reaches that screen. Change the file name in `ES.MUSIC_FILES.lobby` (config.js) to swap the song; delete that line to turn it off.
+
+## Stage 7A - My Profile (XP, levels, skins, perks, awards)
+- **Sign in:** menu button "My Profile" -> name + 4-digit code. No code = guest (the game works as before, XP is not saved).
+- **XP** after every match: +15 played, +10 per right answer, +4 per tag, +40 win (+15 draw), +10 streak of 5, +30 streak of 10 (max 320 per match). Level N needs 50*(N-1)*N XP (L2=100, L5=1000, L10=4500, max 20).
+- **Unlocks by level:** helmets (Gold Cap L2, Lime Crest L3, Purple Horns L5, Ice Halo L7, Royal Crown L10), blaster looks (L2, L4, L6, L8, L10), shot trails (L3, L5, Rainbow L7, Gold L9). Other students see your helmet in class matches.
+- **Perks (small and fair):** +2 starting ammo (L4), +1 ammo per right answer (L6), +2 more starting ammo (L8), +1 more per right answer (L12).
+- **Badges:** matches played, wins, right answers, streaks, Perfect Match, Sharpshooter, Survivor, and a Star badge for every subject (20 right answers).
+- **End screen:** XP earned, level bar, level-ups, new unlocks and badges, plus "awards" for the match (Best Brain, Sharpshooter, Streak Master, Survivor, Team Winner).
+- **Saving:** always on the computer (localStorage). To also keep it in your Google Sheet and follow students between computers: paste `apps-script/Progress.gs` into the Sheet's Apps Script, deploy as a Web app, and put its link in `ES.PROGRESS.url` (config.js). Rows: Name, Level, XP, Matches, Wins, Right answers, Accuracy, Best streak, Badges.
+- Files: `js/progress.js` (rules + saving), `js/profile-ui.js` (menu button + window), small hooks in game.js, session.js, room.js, match.js.
+
+## Stage 7B - Starter choices (free, level 1)
+Every student (even a brand-new one) can pick, for free, straight away:
+- **Helmets:** Blue, Red, Green and Orange caps (as well as Classic).
+- **Blasters:** Blue, Red and Green colour accents.
+- **Name colour:** Team colour, Gold, Pink or Green (more unlock at levels 4 and 8).
+Classmates see your cap and name colour in a class match. The code sent over the network looks like `h7:n1` (helmet:name colour).

@@ -290,7 +290,7 @@
     });
     M.ents.forEach(function (e) { M.byEid[e.eid] = e; placeAtSpawn(e, used); });
 
-    const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human }; });
+    const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human, sk: e.p && e.p.sk ? e.p.sk : 'h0:n0' }; });
     M.humans.forEach(function (e) {
       ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : 'normal'), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });

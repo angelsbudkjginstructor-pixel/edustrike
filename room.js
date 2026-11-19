@@ -72,7 +72,7 @@
           if (p) return;
           if (players.length >= MAX) { host.send(conn, { t: 'full' }); setTimeout(function () { host.closeConn(conn); }, 300); return; }
           const c = counts();
-          p = { id: nextId++, conn: conn, name: uniqueName(cleanName(m.name)), team: c[0] <= c[1] ? 0 : 1, rtt: 0, joined: Date.now(), lastSeen: Date.now() };
+          p = { id: nextId++, conn: conn, name: uniqueName(cleanName(m.name)), team: c[0] <= c[1] ? 0 : 1, rtt: 0, joined: Date.now(), lastSeen: Date.now(), sk: /^h[0-9]:n[0-9]$/.test(String(m.sk)) ? String(m.sk) : 'h0:n0' };
           players.push(p);
           host.send(conn, { t: 'welcome', id: p.id, code: code, list: publicList(), phase: phase, lock: lockTeams, name: p.name, team: p.team });
           if (extra.join) extra.join(p);

@@ -39,7 +39,7 @@
     S.code = ES.net.cleanCode(code);
     link = ES.net.join(code, {
       onOpen: function () {
-        link.send({ t: 'hello', name: name });
+        link.send({ t: 'hello', name: name, sk: ES.progress ? ES.progress.skinCode() : 'h0:n0' });
         // if the teacher never answers "hello", do not wait forever
         setTimeout(function () { if (link && !S.connected && cb.onError) { const l = link; link = null; l.close(); cb.onError('timeout', 'The teacher did not answer. Try again.'); } }, 8000);
       },

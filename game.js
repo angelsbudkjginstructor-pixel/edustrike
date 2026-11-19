@@ -28,6 +28,10 @@
   let sunLight = null, rings = [], ringI = 0, outlineMeshes = [], namesAll = false;
   let ultraCtx = null, ultraU = null, ultraLoading = false;      // Ultra-only extras (js/ultra.js)
 
+
+  /* starting ammo = the normal amount + the small perk the student earned by levelling up (see js/progress.js) */
+  function startAmmo() { let b = 0; try { b = ES.progress ? ES.progress.perks().startAmmo : 0; } catch (e) { b = 0; } return Math.min(AMMO.max, AMMO.start + b); }
+
   /* Ultra realism: load js/ultra.js once (from the same folder as this file) and switch it on. Any problem = the normal High picture. */
   function ultraTry() {
     if (G.level !== 'ultra' || !ultraCtx || ultraU) return;
@@ -148,11 +152,11 @@
       /* class match: the referee (teacher's page) told us who is playing */
       opts.net.ents.forEach(function (d) {
         const e = makeEnt(d.team, d.name, d.eid === NET.you, 'normal');
-        e.eid = d.eid; e.isBot = false; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
+        e.eid = d.eid; e.sk = d.sk || 'h0:n0'; e.isBot = false; e.isRemote = d.eid !== NET.you; e.seen = false; e.tx = 0; e.ty = 0; e.tz = 0; e.tyaw = 0;
         NET.byEid[d.eid] = e; ents.push(e);
         if (e.isPlayer) player = e;
       });
-      ents.forEach(function (e) { if (!e.isPlayer) { e.mesh = buildBotMesh(e); e.mesh.visible = false; scene.add(e.mesh); } });
+      ents.forEach(function (e) { if (!e.isPlayer) { e.mesh = buildBotMesh(e); addCrest(e.mesh, e.sk); e.mesh.visible = false; scene.add(e.mesh); } });
       player.x = opts.net.x; player.z = opts.net.z; player.y = 0; player.yaw = opts.net.yaw; yaw = opts.net.yaw; pitch = 0;
     } else {
       player = makeEnt(0, st.name || 'Cadet', true, 'normal');
@@ -188,11 +192,11 @@
     S = {
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
       total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: CF ? 9999 : (NET ? opts.net.target : st.targetKills),
-      ammo: AMMO.start, fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
+      ammo: startAmmo(), fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
       weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       qMission: '', qMax: 0, bannerT: 0, fxT: 3.2, airJ: 0, spaceWas: false,
-      stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bySubj: {}, missed: [] },
+      stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bestStreak: 0, bySubj: {}, missed: [] },
       reason: '', fpsMin: 999, fpsSum: 0, fpsN: 0
     };
     Object.keys(cache).forEach(function (k) { delete cache[k]; });
@@ -404,12 +408,20 @@
     buildSoldierGuns();
   }
 
+  /* a classmate's chosen name colour (from My Profile) or the team colour */
+  function tagCss(e) {
+    try {
+      const t = (e.sk && ES.progress) ? ES.progress.tagById(String(e.sk).split(':')[1]) : null;
+      if (t && t.color) return '#' + ('000000' + t.color.toString(16)).slice(-6);
+    } catch (err) { /* team colour */ }
+    return ES.TEAMS[e.team].css;
+  }
   function makeNameSprite(name, css, seeThroughWalls) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 64;
     const x = c.getContext('2d');
     x.fillStyle = css; x.globalAlpha = 0.85;
     x.beginPath(); x.moveTo(20, 6); x.lineTo(236, 6); x.quadraticCurveTo(250, 6, 250, 20); x.lineTo(250, 44); x.quadraticCurveTo(250, 58, 236, 58); x.lineTo(20, 58); x.quadraticCurveTo(6, 58, 6, 44); x.lineTo(6, 20); x.quadraticCurveTo(6, 6, 20, 6); x.fill();
-    x.globalAlpha = 1; x.fillStyle = '#fff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(name, 128, 34);
+    x.globalAlpha = 1; x.fillStyle = (/^#(ff|e|f)/i.test(css) && css !== '#ff5a3c' && css !== '#ff8a1f') ? '#12203a' : '#fff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(name, 128, 34);
     const tex = new T.CanvasTexture(c);
     const spr = new T.Sprite(new T.SpriteMaterial({ map: tex, depthTest: !seeThroughWalls, transparent: true }));   // teammates show through walls, enemies' names do not (fair play)
     spr.scale.set(1.7, 0.42, 1);
@@ -431,9 +443,25 @@
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.45; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.1; root.add(nm); }
+    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, tagCss(e), e.team === myTeam()); nm.position.y = 2.1; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, armL: armL, bubble: bubble, gunMesh: gunMesh, curW: 'pistol' };
     return root;
+  }
+
+
+  /* a small helmet decoration on other STUDENTS in a class match (their chosen look from My Profile). 1-4 tiny shapes per student, so it costs nothing. */
+  function addCrest(root, sk) {
+    try {
+      const h = ES.progress ? ES.progress.helmetById(String(sk).split(':')[0]) : null; if (!h || !h.shape) return;
+      const mat = new T.MeshBasicMaterial({ color: h.color, fog: false }), geos = [];
+      const part = function (geo, x, y, z, rx) { geos.push(geo); const m = new T.Mesh(geo, mat); m.position.set(x, y, z); if (rx) m.rotation.x = rx; m.userData.shared = false; root.add(m); return m; };
+      if (h.shape === 'cap') part(new T.BoxGeometry(0.5, 0.08, 0.5), 0, 1.98, 0);
+      else if (h.shape === 'crest') part(new T.BoxGeometry(0.1, 0.22, 0.42), 0, 2.02, 0);
+      else if (h.shape === 'horns') { part(new T.ConeGeometry(0.06, 0.3, 5), -0.22, 2.05, 0); part(new T.ConeGeometry(0.06, 0.3, 5), 0.22, 2.05, 0); }
+      else if (h.shape === 'halo') part(new T.TorusGeometry(0.22, 0.03, 6, 14), 0, 2.15, 0, Math.PI / 2);
+      else if (h.shape === 'crown') { part(new T.BoxGeometry(0.42, 0.12, 0.42), 0, 1.98, 0); [-0.15, 0, 0.15].forEach(function (x) { part(new T.ConeGeometry(0.06, 0.18, 4), x, 2.12, 0); }); }
+      root.userData.crestMat = mat; root.userData.crestGeos = geos;
+    } catch (e) { /* a decoration must never stop the match */ }
   }
 
   function buildBotMesh(e) {
@@ -451,7 +479,7 @@
     else { const blob = new T.Mesh(shared.blob, shared.blobMat); blob.position.y = 0.04; blob.userData.shared = true; root.add(blob); }
     const bubble = new T.Sprite(shared.bubbleMat); bubble.scale.set(0.75, 0.75, 1); bubble.position.y = 2.7; bubble.visible = false; bubble.userData.shared = true;
     root.add(bubble);
-    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, ES.TEAMS[e.team].css, e.team === myTeam()); nm.position.y = 2.2; root.add(nm); }
+    if (e.team === myTeam() || namesAll) { const nm = makeNameSprite(e.name, tagCss(e), e.team === myTeam()); nm.position.y = 2.2; root.add(nm); }
     root.userData = { body: body, bodyMat: bodyMat, legL: legL, legR: legR, bubble: bubble, gunMesh: gunMesh, curW: 'pistol' };
     return root;
   }
@@ -521,7 +549,7 @@
     gunId = id;
     if (gun) { camera.remove(gun); gun.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
     gun = new T.Group();
-    const REAL = !!gfx.real, accent = ES.TEAMS[myTeam()].color, spec = GUN_SPECS[id];
+    const REAL = !!gfx.real, skinG = ES.progress ? ES.progress.equipped('gun') : null, accent = (skinG && skinG.color) ? skinG.color : ES.TEAMS[myTeam()].color, spec = GUN_SPECS[id];
     const mat = function (color, metal) {
       return REAL ? new T.MeshStandardMaterial({ color: color, roughness: metal ? 0.45 : 0.7, metalness: metal ? 0.2 : 0.05, depthTest: false })
                   : new T.MeshLambertMaterial({ color: color, depthTest: false });
@@ -637,7 +665,7 @@
     e.state = 'roam'; e.ammo = e.D.mag; e.deathT = 0;
     if (e.mesh) { e.mesh.visible = true; e.mesh.scale.set(1, 1, 1); }
     if (e.isPlayer) {
-      S.ammo = Math.max(S.ammo, AMMO.start);
+      S.ammo = Math.max(S.ammo, startAmmo());
       show('ov-death', false);
       ES.audio.sfx('respawn');
     }
@@ -722,6 +750,16 @@
     S.feed.unshift({ a: a, t: t, head: head, life: 5 });
     if (S.feed.length > 5) S.feed.pop();
     S.feedDirty = true;
+  }
+
+  /* the student's chosen shot trail (0 = normal team colour; rainbow cycles through colours) */
+  function trailColor() {
+    try {
+      const t = ES.progress ? ES.progress.equipped('trail') : null;
+      if (!t || !t.color) return 0;
+      if (t.color === -1) { const c = new T.Color(); c.setHSL((performance.now() / 700) % 1, 1, 0.6); return c.getHex(); }
+      return t.color;
+    } catch (e) { return 0; }
   }
 
   G.addTracer = function (ax, ay, az, bx, by, bz, team, color) {
@@ -839,7 +877,7 @@
     const moving = Math.hypot(player.vx, player.vz) > 1;
     const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
     const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-    const col = bonus ? W.color : 0;
+    const col = bonus ? W.color : trailColor();
     const aim = st.aimAssist ? (W.pellets > 1 ? 1.3 : 1.7) : 1;
     let hitAny = false, headAny = false, first = null, hits = [], sendEnd = null;
     for (let n = 0; n < W.pellets; n++) {
@@ -940,13 +978,14 @@
     }
     const fb = $('qp-fb');
     if (right) {
-      bs.c++; S.stats.qRight++; S.streak++;
-      let gain = st.reward + (S.streak >= 3 ? 3 : 0);
+      bs.c++; S.stats.qRight++; S.streak++; if (S.streak > S.stats.bestStreak) S.stats.bestStreak = S.streak;
+      let perk = 0; try { perk = ES.progress ? ES.progress.perks().answerBonus : 0; } catch (e) { perk = 0; }      // small level perk
+      let gain = st.reward + (S.streak >= 3 ? 3 : 0) + perk;
       S.ammo = Math.min(AMMO.max, S.ammo + gain);
       S.qCd = 2;
       fb.className = 'qfb good';
       const earn = S.streak > 0 && S.streak % 3 === 0;
-      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (S.qMission ? '<br><b>' + RB_TXT[S.qMission].done + '</b>' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
+      fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (perk ? ' (+' + perk + ' level perk)' : '') + (S.streak === 5 ? '<br><b>🔥 On fire! 5 in a row!</b>' : (S.streak === 10 ? '<br><b>⚡ UNSTOPPABLE! 10 in a row!</b>' : '')) + (S.qMission ? '<br><b>' + RB_TXT[S.qMission].done + '</b>' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
       if (S.qMission) rbDo(S.qMission);
       if (earn) setTimeout(function () { if (S && S.phase === 'play') earnWeapon(); }, 1150);
       ES.audio.sfx('correct');
@@ -1045,10 +1084,45 @@
     const mine = S.score[myTeam()], other = S.score[1 - myTeam()];
     if (mine > other) outcome = 'win'; else if (other > mine) outcome = 'lose';
     S.outcome = outcome;
+    S.prog = null;                                       // XP, level-ups and badges for this match (see js/progress.js)
+    try {
+      const st2 = S.stats;
+      S.prog = ES.progress ? ES.progress.award({ kills: st2.kills, deaths: st2.deaths, shots: st2.shots, hits: st2.hits, qAsked: st2.qAsked, qRight: st2.qRight, bestStreak: st2.bestStreak, bySubj: st2.bySubj, outcome: outcome }) : null;
+    } catch (e) { S.prog = null; }
     buildEndScreen(outcome);
     show('ov-end', true);
     ES.audio.sfx(outcome === 'win' ? 'win' : (outcome === 'lose' ? 'lose' : 'go'));
     setTimeout(function () { ES.audio.announce(outcome); }, 700);
+  }
+
+
+  /* the "Your progress" card on the end screen: XP earned, level bar, level-ups, new unlocks, badges and this match's awards */
+  function renderProgressCard() {
+    const box = $('end-prog'); if (!box) return;
+    box.innerHTML = '';
+    const pr = S.prog; if (!pr) return;
+    const mk = function (tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    const card = mk('div', 'pf-end'); box.appendChild(card);
+    card.appendChild(mk('h4', '', '⭐ Your progress'));
+    pr.gain.forEach(function (g) { const r = mk('div', 'pf-gain'); r.appendChild(mk('span', '', g[0])); r.appendChild(mk('span', '', (g[1] > 0 ? '+' : '') + g[1] + ' XP')); card.appendChild(r); });
+    card.appendChild(mk('div', 'pf-total', '+' + pr.total + ' XP'));
+    if (pr.signedIn && pr.after) {
+      const I = ES.progress.info(ES.progress.get());
+      const bar = mk('div', 'pf-bar'), fill = mk('div', 'pf-fill'); bar.appendChild(fill); card.appendChild(bar); fill.style.width = '0%';
+      setTimeout(function () { fill.style.width = I.pct + '%'; }, 80);
+      card.appendChild(mk('div', 'pf-xp', 'Level ' + I.level + (I.level >= ES.progress.maxLevel ? ' (MAX)' : '  ·  ' + (I.need - I.into) + ' XP to level ' + (I.level + 1))));
+      if (pr.after.lv > pr.before.lv) card.appendChild(mk('div', 'pf-up', '🎉 LEVEL UP! You are now level ' + pr.after.lv + '!'));
+      pr.newItems.forEach(function (x) { card.appendChild(mk('div', 'pf-up', '🔓 New ' + ES.progress.kindName[x[0]].toLowerCase() + ': ' + x[1].name)); });
+      pr.newPerks.forEach(function (t) { card.appendChild(mk('div', 'pf-up', '⚡ New perk: ' + t)); });
+      pr.newBadges.forEach(function (id) { const b = ES.progress.badgeInfo(id); card.appendChild(mk('div', 'pf-up', b[0] + ' New badge: ' + b[1])); });
+    } else {
+      card.appendChild(mk('div', 'pf-signin-hint', '👤 This XP was not saved. Sign in from the menu (My Profile) to keep your XP, levels and rewards next time!'));
+    }
+    if (pr.awards.length) {
+      const row = mk('div', 'pf-awards');
+      pr.awards.forEach(function (a) { const c = mk('span', 'pf-award', a[0] + ' ' + a[1]); c.title = a[2]; row.appendChild(c); });
+      card.appendChild(row);
+    }
   }
 
   function buildEndScreen(outcome) {
@@ -1066,6 +1140,7 @@
       d.children[1].textContent = x[1]; d.children[2].textContent = x[2];
       $('end-stats').appendChild(d);
     });
+    renderProgressCard();
     // per-subject bars
     const bars = $('end-subj'); bars.innerHTML = '';
     Object.keys(s.bySubj).forEach(function (k) {
@@ -1837,7 +1912,7 @@
       e.alive = true; e.hp = P.hp; e.protT = 1.5; e.target = null; e.path = null; e.sees = false; e.state = 'roam'; e.ammo = e.D.mag; e.deathT = 0; e.alert = 0; e.objKind = ''; e.vx = e.vz = e.vy = 0;
       if (e.mesh) { e.mesh.visible = true; e.mesh.scale.set(1, 1, 1); }
     });
-    S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99; dropWeapon(true);
+    S.ammo = Math.max(S.ammo, startAmmo()); S.sinceHurt = 99; dropWeapon(true);
     if (S.qOpen) cancelQuestion(true);
     show('ov-death', false);
   }
@@ -2125,7 +2200,7 @@
     p.alive = true; p.hp = P.hp; p.protT = P.protect;
     if (S.weapon !== 'pistol') dropWeapon(true);              // a new round starts with the normal blaster
     if (S.qOpen && (RB || CF)) cancelQuestion(true);
-    S.ammo = Math.max(S.ammo, AMMO.start); S.sinceHurt = 99;
+    S.ammo = Math.max(S.ammo, startAmmo()); S.sinceHurt = 99;
     show('ov-death', false);
     ES.audio.sfx('respawn');
   };
