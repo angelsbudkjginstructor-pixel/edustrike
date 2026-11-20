@@ -310,3 +310,7 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 .cls-aw { background: linear-gradient(#ffe48a, #ffc83d); color: #3b2a00; padding: 6px 12px; border-radius: 12px; font-weight: 800; display: flex; flex-direction: column; align-items: center; min-width: 110px; }
 .cls-aw.me { outline: 3px solid #fff; box-shadow: 0 0 14px #ffd23f; }
 .cls-aw b { font-size: 14px; }
+
+/* My Profile button inside the waiting room (white card, so it needs dark text) */
+#room-profile { margin: 10px auto 8px; color: #12203a; background: #eef3ff; border-color: #b9c9ee; }
+#room-profile.in { background: linear-gradient(180deg,#ffd23f,#ffb300); border-color: #ffd23f; color: #12203a; }

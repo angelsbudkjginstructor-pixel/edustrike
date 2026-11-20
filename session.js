@@ -78,6 +78,8 @@
   ES.session = {
     state: S, join: join, leave: leave,
     send: function (msg) { return link ? link.send(msg) : false; },
+    /* tell the teacher my name and look again (after signing in or changing My Profile while waiting) */
+    sendWho: function (name) { if (link && S.connected) link.send({ t: 'who', name: name, sk: ES.progress ? ES.progress.skinCode() : 'h0:n0' }); },
     setTeam: function (team) { if (link && S.connected) link.send({ t: 'team', team: team }); },
     rtt: function () { return rtt; },
     on: function (type, fn) { handlers[type] = fn; }

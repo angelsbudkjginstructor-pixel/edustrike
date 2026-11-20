@@ -24,9 +24,9 @@
     let n = String(raw == null ? '' : raw).replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 12);
     return n || 'Cadet';
   }
-  function uniqueName(n) {
+  function uniqueName(n, self) {
     let out = n, k = 2;
-    const taken = function (x) { return players.some(function (p) { return p.name.toLowerCase() === x.toLowerCase(); }); };
+    const taken = function (x) { return players.some(function (p) { return p !== self && p.name.toLowerCase() === x.toLowerCase(); }); };
     while (taken(out)) { out = n.slice(0, 10) + ' ' + k++; }
     return out;
   }
@@ -84,6 +84,13 @@
         if (m.t === 'team') {
           if (lockTeams || phase !== 'lobby') { host.send(conn, { t: 'roster', list: publicList(), phase: phase, lock: lockTeams }); return; }
           if (m.team === 0 || m.team === 1) { p.team = m.team; changed(); }
+        } else if (m.t === 'who') {
+          /* a waiting student signed in or changed their look in My Profile: update the name and look (only before the match starts) */
+          if (phase !== 'lobby') return;
+          p.name = uniqueName(cleanName(m.name), p);
+          if (/^h[0-9]:n[0-9]$/.test(String(m.sk))) p.sk = String(m.sk);
+          host.send(conn, { t: 'roster', list: publicList(), phase: phase, lock: lockTeams });
+          changed();
         } else if (m.t === 'ping') {
           p.rtt = Math.max(0, Math.min(9999, Number(m.rtt) || 0));
           host.send(conn, { t: 'pong', ts: m.ts });

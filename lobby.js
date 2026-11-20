@@ -121,8 +121,31 @@
     } catch (e) { /* the song is optional */ }
   }
 
+  /* ---------- My Profile inside the waiting room ----------
+     The student can sign in, check level / XP / badges and change colours while waiting. Closing the window brings them back here
+     (they never left the room). Name and look are sent to the teacher again so the board shows them. */
+  function profileButton() {
+    try {
+      const b = $('room-profile'); if (!b || !ES.progress) return;
+      const p = ES.progress.get();
+      if (!p) { b.textContent = '👤 Sign in to save your XP, level and rewards'; b.classList.remove('in'); return; }
+      const I = ES.progress.info(p);
+      b.textContent = '👤 ' + p.name + '  ·  Level ' + I.level + '  ·  ' + p.xp + ' XP  ▸'; b.classList.add('in');
+    } catch (e) { /* the button is optional */ }
+  }
+  function sendWho() {
+    try {
+      const p = ES.progress && ES.progress.get();
+      const name = (p && p.name) || (ES.settings && ES.settings.name) || '';
+      if (name && ES.session.state.connected && ES.session.state.phase === 'lobby') ES.session.sendWho(name);
+    } catch (e) { /* ignore */ }
+  }
+
   function init() {
     setInterval(songSync, 100);
+    $('room-profile').addEventListener('click', function () { if (ES.profileUI) ES.profileUI.open(); });
+    if (ES.progress && ES.progress.onChange) ES.progress.onChange(function () { profileButton(); sendWho(); });
+    profileButton();
     $('room-join').addEventListener('click', join);
     $('room-code-in').addEventListener('input', function () { this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); });
     $('room-code-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') join(); });
