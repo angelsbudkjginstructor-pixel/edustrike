@@ -20,7 +20,7 @@
   let ents, player, S, quiz;
   let raf = 0, lastT = 0;
   let keys = {}, yaw = 0, pitch = 0, fireHeld = false, rightDown = false, locked = false;
-  let tracers = [], sparks = [], tracerI = 0, gun, muzzle, shared;
+  let tracers = [], sparks = [], tracerI = 0, gun, muzzle, shared, booms = null;
   let crates = [], crateClock = 0;      // weapon crates lying on the map
   let radarBase, radarCtx, radarT = 0, hudT = 0;
   let fpsFrames = 0, fpsTime = 0, fpsSlowT = 0, fpsTipShown = false;
@@ -210,7 +210,7 @@
       phase: 'ready', paused: false, qOpen: false, qState: '', cur: null, qTime: 0, qCd: 0,
       total: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, timeLeft: RB ? RB.cfg.minutes * 60 : (NET ? opts.net.minutes : st.minutes) * 60, score: [0, 0], target: (CF || BOSS) ? 9999 : (NET ? opts.net.target : st.targetKills),
       ammo: startAmmo(), fireCd: 0, sinceHurt: 99, streak: 0, countT: 0,
-      weapon: 'pistol', wAmmo: 0, wTime: 0, crMask: 0, crSeen: 0, crClock: null,
+      weapon: 'pistol', wAmmo: 0, wTime: 0, slot: 0, sw: spStart(opts), swAmmo: spMag(spStart(opts)), crMask: 0, crSeen: 0, crClock: null,
       feed: [], dmgFlash: 0, hitMark: 0, recoil: 0, muzzleT: 0,
       qMission: '', qMax: 0, bannerT: 0, fxT: 3.2, airJ: 0, spaceWas: false,
       stats: { kills: 0, deaths: 0, shots: 0, hits: 0, heads: 0, qAsked: 0, qRight: 0, bestStreak: 0, revives: 0, bySubj: {}, missed: [] },
@@ -259,6 +259,7 @@
     renderer = null; scene = null; world = null; shared = null;
     const wrap = $('gl-wrap'); if (wrap) wrap.innerHTML = '';
     ['ov-ready', 'ov-pause', 'ov-count', 'ov-death', 'qp', 'ov-end', 'scoreboard', 'ov-round', 'rb-bar', 'rb-hint', 'rv-hint', 'qm-panel'].forEach(function (id) { show(id, false); });
+    { const swc = $('sw-chip'); if (swc) swc.onclick = swapSlot; }     // tap the chip on a touch screen = same as Q
   };
 
   /* =====================================================================
@@ -524,6 +525,27 @@
       ['c', 0.065, 0.8, 0x4a5236, 0, 0.02, -0.2], ['c', 0.082, 0.1, 0x353b28, 0, 0.02, 0.2], ['c', 0.07, 0.04, 'acc', 0, 0.02, -0.5],
       ['c', 0.07, 0.04, 'acc', 0, 0.02, -0.05], ['k', 0.05, 0.16, 'acc', 0, 0.02, -0.68], ['b', 0.06, 0.1, 0.14, 0x30343c, 0, -0.1, -0.05],
       ['b', 0.045, 0.1, 0.06, 0x252a31, 0, -0.14, 0.08], ['b', 0.03, 0.06, 0.12, 0x15181c, 0, 0.1, -0.1]] },
+    bazooka: { k: 1.2, muzzle: -0.98, view: { s: 0.5, x: 0.3, y: -0.27, z: -0.85, ry: 0.22 }, parts: [                     // Mega Bazooka: a fat olive launch tube, ring bands, a glowing rocket tip, flared back, sight and grips
+      ['c', 0.075, 1.15, 0x3b4231, 0, 0.02, -0.3], ['c', 0.09, 0.05, 0x2a2f24, 0, 0.02, -0.05], ['c', 0.09, 0.05, 0x2a2f24, 0, 0.02, -0.48],
+      ['c', 0.083, 0.035, 'acc', 0, 0.02, -0.2], ['c', 0.083, 0.035, 'acc', 0, 0.02, -0.62], ['c', 0.1, 0.09, 0x20241b, 0, 0.02, -0.86],
+      ['c', 0.058, 0.12, 0x4a5236, 0, 0.02, -0.82], ['k', 0.07, 0.24, 'acc', 0, 0.02, -0.97],
+      ['c', 0.11, 0.14, 0x20241b, 0, 0.02, 0.33], ['c', 0.078, 0.1, 0x0e0f0c, 0, 0.02, 0.4],
+      ['b', 0.045, 0.13, 0.06, 0x15181c, 0, -0.1, 0.12], ['b', 0.04, 0.16, 0.05, 0x15181c, 0, -0.11, -0.3], ['b', 0.075, 0.04, 0.22, 0x4a3a2a, 0, 0.1, 0.16],
+      ['b', 0.025, 0.06, 0.1, 0x15181c, 0.075, 0.1, -0.1], ['b', 0.02, 0.03, 0.02, 'acc', 0.075, 0.12, -0.16], ['b', 0.16, 0.012, 0.06, 0xffd23f, 0, 0.1, -0.45]] },
+    longshot: { k: 1.4, muzzle: -1.22, view: { s: 0.48, x: 0.24, y: -0.24, z: -0.8, ry: 0.1 }, parts: [                    // Long Shot: a very long suppressed barrel, a big scope with glowing rings, bolt handle, bipod and a padded stock
+      ['b', 0.06, 0.1, 0.45, 0x2a2f38, 0, 0, 0], ['c', 0.014, 0.9, 0x1d2127, 0, 0.015, -0.65], ['c', 0.03, 0.34, 0x15181c, 0, 0.015, -1.02], ['c', 0.033, 0.03, 'acc', 0, 0.015, -0.88],
+      ['c', 0.032, 0.34, 0x15181c, 0, 0.105, -0.08], ['c', 0.041, 0.03, 'acc', 0, 0.105, -0.26], ['c', 0.037, 0.03, 'acc', 0, 0.105, 0.1],
+      ['b', 0.03, 0.03, 0.03, 0x15181c, 0, 0.14, -0.08], ['b', 0.02, 0.04, 0.03, 0x15181c, 0, 0.07, -0.2], ['b', 0.02, 0.04, 0.03, 0x15181c, 0, 0.07, 0.04],
+      ['b', 0.055, 0.13, 0.34, 0x3a3f33, 0, -0.01, 0.38], ['b', 0.05, 0.04, 0.2, 0x2a2f38, 0, 0.06, 0.36], ['b', 0.06, 0.14, 0.03, 'acc', 0, -0.01, 0.56],
+      ['b', 0.04, 0.14, 0.07, 0x1d2127, 0, -0.12, 0.02], ['b', 0.04, 0.11, 0.05, 0x1d2127, 0, -0.1, 0.2], ['b', 0.05, 0.02, 0.02, 0x9aa3b2, 0.04, 0.03, 0.08],
+      ['b', 0.012, 0.14, 0.012, 0x1d2127, -0.04, -0.08, -0.6], ['b', 0.012, 0.14, 0.012, 0x1d2127, 0.04, -0.08, -0.6], ['b', 0.062, 0.015, 0.3, 'acc', 0, 0.055, 0.02]] },
+    supershot: { k: 1.5, muzzle: -0.7, view: { s: 0.56, x: 0.22, y: -0.22, z: -0.75, ry: 0.1 }, parts: [                    // Super Scatter: a chunky double-barrel with a coloured rail, wooden pump, big magazine and stock
+      ['b', 0.1, 0.12, 0.3, 0x3a3f48, 0, 0, 0], ['c', 0.032, 0.55, 0x23272e, -0.034, 0.02, -0.4], ['c', 0.032, 0.55, 0x23272e, 0.034, 0.02, -0.4],
+      ['b', 0.13, 0.05, 0.04, 'acc', 0, 0.02, -0.62], ['b', 0.13, 0.04, 0.04, 0x15181c, 0, 0.02, -0.4], ['c', 0.038, 0.04, 0x15181c, -0.034, 0.02, -0.69], ['c', 0.038, 0.04, 0x15181c, 0.034, 0.02, -0.69],
+      ['b', 0.06, 0.018, 0.4, 'acc', 0, 0.085, -0.12], ['b', 0.11, 0.07, 0.2, 0x6b4423, 0, -0.045, -0.3], ['b', 0.115, 0.02, 0.03, 0x4a2f18, 0, -0.045, -0.3],
+      ['b', 0.06, 0.1, 0.18, 0x23272e, 0, -0.1, 0.03], ['b', 0.062, 0.02, 0.18, 'acc', 0, -0.06, 0.03],
+      ['b', 0.07, 0.12, 0.3, 0x6b4423, 0, -0.02, 0.3], ['b', 0.075, 0.14, 0.03, 0x15181c, 0, -0.02, 0.46], ['b', 0.05, 0.11, 0.06, 0x15181c, 0, -0.09, 0.16],
+      ['b', 0.015, 0.03, 0.015, 'acc', 0, 0.07, -0.66]] },
     rifle: { k: 1, muzzle: 0, parts: [                             // what a soldier holds with the normal blaster
       ['b', 0.07, 0.1, 0.66, 0x1d2127, 0, 0, -0.24], ['c', 0.018, 0.4, 0x1d2127, 0, 0.02, -0.72], ['b', 0.05, 0.16, 0.07, 0x1d2127, 0, -0.12, -0.2],
       ['b', 0.06, 0.12, 0.22, 0x1d2127, 0, 0.02, 0.16], ['b', 0.03, 0.04, 0.1, 0x22262c, 0, 0.08, -0.32],
@@ -545,7 +567,7 @@
   function buildSoldierGuns() {                            // shared by every soldier (so 30 soldiers still cost little)
     shared.wgeo = {};
     shared.wgeo.pistol = specGeo(GUN_SPECS.rifle, 1, 0);
-    ES.WEAPON_IDS.forEach(function (id) { shared.wgeo[id] = specGeo(GUN_SPECS[id], GUN_SPECS[id].k, ES.WEAPONS[id].color); });
+    ES.WEAPON_IDS.forEach(function (id) { const sp = GUN_SPECS[id]; shared.wgeo[id] = specGeo(sp, sp.k, ES.WEAPONS[id].color); });
     shared.wMat = gfx.real ? new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 }) : new T.MeshLambertMaterial({ vertexColors: true });
   }
   function addSoldierGun(root, real) {
@@ -622,9 +644,10 @@
       glow.position.set(0.0, 0.085, -0.04); glow.renderOrder = 22; gun.add(glow);
       muzzle.scale.multiplyScalar(1.5);
     }
-    gun.scale.set(0.55, 0.55, 0.55);
-    gun.position.set(0.2, -0.18, -0.5);
-    gun.rotation.set(0, 0.04, 0);
+    const vw = (spec && spec.view) || null;                 // big special weapons are drawn a little smaller and further away so they fit on the screen
+    gun.scale.setScalar(vw ? vw.s : 0.55);
+    gun.position.set(vw ? vw.x : 0.2, vw ? vw.y : -0.18, vw ? vw.z : -0.5); gun.userData.bz = vw ? vw.z : -0.5;
+    gun.rotation.set(0, vw && vw.ry !== undefined ? vw.ry : 0.04, 0);
     camera.add(gun);
   }
 
@@ -651,6 +674,90 @@
       m.visible = false; m.userData.shared = true; scene.add(m);
       sparks.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0 });
     }
+    buildBooms();
+  }
+
+  /* ---------- big explosions and rockets (the Rocket crate weapon and the bought Mega Bazooka) ----------
+     A small fixed set of simple shapes is made ONCE and re-used: 2 fireballs, 2 flash cores, 2 ground shockwaves, 2 rockets and a few smoke puffs.
+     Nothing is created while playing, so a blast costs almost nothing, even on a weak laptop. */
+  function buildBooms() {
+    const T3 = T, add = function (m) { m.visible = false; m.userData.shared = true; scene.add(m); return m; };
+    const ig = new T3.IcosahedronGeometry(1, 1), sg = new T3.IcosahedronGeometry(1, 1), wg = new T3.RingGeometry(0.82, 1, 28); wg.rotateX(-Math.PI / 2);
+    shared.boomGeo = ig; shared.smokeGeo = sg; shared.waveGeo = wg;
+    const glow = function (col) { return new T3.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, blending: T3.AdditiveBlending, depthWrite: false }); };
+    booms = { fire: [], core: [], smoke: [], wave: [], rock: [], fI: 0, sI: 0, wI: 0, rI: 0 };
+    for (let i = 0; i < 2; i++) {
+      booms.fire.push({ mesh: add(new T3.Mesh(ig, glow(0xff7a1a))), life: 0, max: 1, sc: 1 });
+      booms.core.push({ mesh: add(new T3.Mesh(ig, glow(0xfff2b0))), life: 0, max: 1, sc: 1 });
+      const wm = new T3.Mesh(wg, new T3.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0, blending: T3.AdditiveBlending, depthWrite: false, side: T3.DoubleSide }));
+      booms.wave.push({ mesh: add(wm), life: 0, max: 1, sc: 1 });
+      const rk = new T3.Group();
+      const body = new T3.Mesh(new T3.CylinderGeometry(0.07, 0.07, 0.5, 8), new T3.MeshBasicMaterial({ color: 0x9aa3b2 })); body.rotation.x = Math.PI / 2; body.userData.shared = true;
+      const tip = new T3.Mesh(new T3.ConeGeometry(0.07, 0.2, 8), new T3.MeshBasicMaterial({ color: 0xff5a3c })); tip.rotation.x = -Math.PI / 2; tip.position.z = -0.35; tip.userData.shared = true;
+      const flame = new T3.Mesh(new T3.ConeGeometry(0.06, 0.4, 6), glow(0xffb43a)); flame.rotation.x = Math.PI / 2; flame.position.z = 0.42; flame.material.opacity = 0.9; flame.userData.shared = true;
+      rk.add(body); rk.add(tip); rk.add(flame); rk.visible = false; rk.userData.shared = true; scene.add(rk);
+      booms.rock.push({ mesh: rk, t: 0, dur: 0, on: false, sc: 1, a: [0, 0, 0], b: [0, 0, 0], tr: 0 });
+    }
+    for (let i = 0; i < (gfx.fx ? 20 : 12); i++) {
+      booms.smoke.push({ mesh: add(new T3.Mesh(sg, new T3.MeshBasicMaterial({ color: 0x6b6b6b, transparent: true, opacity: 0, depthWrite: false }))), life: 0, max: 1, sc: 1, vx: 0, vy: 0, vz: 0 });
+    }
+  }
+  function puff(x, y, z, sc, vx, vy, vz, life, col) {
+    if (!booms) return;
+    const s = booms.smoke[booms.sI++ % booms.smoke.length];
+    s.life = s.max = life; s.sc = sc; s.vx = vx; s.vy = vy; s.vz = vz;
+    s.mesh.position.set(x, y, z); s.mesh.scale.setScalar(sc * 0.4); s.mesh.material.color.setHex(col || 0x6b6b6b); s.mesh.material.opacity = 0.6; s.mesh.visible = true;
+  }
+  /* the explosion itself: fireball, white flash, ground shockwave, smoke, sparks and a shake of your screen if you are close. sc: 1 = rocket, 2 = bazooka */
+  function fxBoom(x, y, z, sc) {
+    if (!booms) return;
+    const f = booms.fire[booms.fI % 2], c = booms.core[booms.fI % 2], w = booms.wave[booms.wI++ % 2]; booms.fI++;
+    f.life = f.max = 0.5; f.sc = sc; f.mesh.position.set(x, y + 0.3 * sc, z); f.mesh.visible = true;
+    c.life = c.max = 0.16; c.sc = sc; c.mesh.position.set(x, y + 0.3 * sc, z); c.mesh.visible = true;
+    w.life = w.max = 0.6; w.sc = sc; w.mesh.position.set(x, Math.max(0.08, y - 0.9), z); w.mesh.visible = true;
+    const n = Math.min(booms.smoke.length, Math.round((gfx.fx ? 9 : 5) * sc));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, sp = (0.6 + Math.random() * 1.4) * sc;
+      puff(x + Math.cos(a) * 0.4 * sc, y + 0.2, z + Math.sin(a) * 0.4 * sc, (0.9 + Math.random() * 0.7) * sc, Math.cos(a) * sp, 0.8 + Math.random() * 1.8, Math.sin(a) * sp, 1.1 + Math.random() * 0.7, i % 3 === 0 ? 0x2e2a28 : 0x7a7570);
+    }
+    burst(x, y, z, 0xff8a3c, Math.round(10 * sc)); burst(x, y + 0.4, z, 0xffd23f, Math.round(6 * sc));
+    const d = Math.hypot(x - player.x, z - player.z);
+    if (d < 32 && S) S.shake = Math.max(S.shake || 0, 0.045 * sc * (1 - d / 32));
+  }
+  /* a rocket you can SEE flying to where it will land (the damage is worked out at the moment you fire; it is so fast the two look together) */
+  function fxRocket(ax, ay, az, bx, by, bz, sc) {
+    if (!booms) { fxBoom(bx, by, bz, sc); return; }
+    const r = booms.rock[booms.rI++ % 2], len = Math.hypot(bx - ax, by - ay, bz - az);
+    r.on = true; r.t = 0; r.dur = Math.max(0.06, len / 120); r.sc = sc; r.a = [ax, ay, az]; r.b = [bx, by, bz]; r.tr = 0;
+    r.mesh.scale.setScalar(sc > 1.5 ? 1.5 : 1); r.mesh.position.set(ax, ay, az); r.mesh.lookAt(bx, by, bz); r.mesh.visible = true;
+  }
+  function updateBooms(dt) {
+    if (!booms) return;
+    booms.fire.forEach(function (f) {
+      if (f.life <= 0) return; f.life -= dt; const k = 1 - Math.max(0, f.life) / f.max;
+      f.mesh.scale.setScalar(f.sc * (0.5 + k * 2.4)); f.mesh.material.opacity = (1 - k) * 0.85; f.mesh.material.color.setHex(k < 0.4 ? 0xff9a2a : 0xd23a12);
+      if (f.life <= 0) f.mesh.visible = false;
+    });
+    booms.core.forEach(function (c) {
+      if (c.life <= 0) return; c.life -= dt; const k = 1 - Math.max(0, c.life) / c.max;
+      c.mesh.scale.setScalar(c.sc * (0.8 + k * 2.2)); c.mesh.material.opacity = (1 - k); if (c.life <= 0) c.mesh.visible = false;
+    });
+    booms.wave.forEach(function (w) {
+      if (w.life <= 0) return; w.life -= dt; const k = 1 - Math.max(0, w.life) / w.max;
+      w.mesh.scale.setScalar(w.sc * (0.5 + k * 5.5)); w.mesh.material.opacity = (1 - k) * 0.7; if (w.life <= 0) w.mesh.visible = false;
+    });
+    booms.smoke.forEach(function (s) {
+      if (s.life <= 0) return; s.life -= dt; const k = 1 - Math.max(0, s.life) / s.max;
+      s.mesh.position.x += s.vx * dt; s.mesh.position.y += s.vy * dt; s.mesh.position.z += s.vz * dt; s.vx *= 0.97; s.vz *= 0.97; s.vy *= 0.985;
+      s.mesh.scale.setScalar(s.sc * (0.4 + k * 1.1)); s.mesh.material.opacity = (1 - k) * 0.55; if (s.life <= 0) s.mesh.visible = false;
+    });
+    booms.rock.forEach(function (r) {
+      if (!r.on) return; r.t += dt; const k = Math.min(1, r.t / r.dur);
+      const x = r.a[0] + (r.b[0] - r.a[0]) * k, y = r.a[1] + (r.b[1] - r.a[1]) * k, z = r.a[2] + (r.b[2] - r.a[2]) * k;
+      r.mesh.position.set(x, y, z);
+      r.tr -= dt; if (r.tr <= 0) { r.tr = 0.03; puff(x, y, z, 0.3 * r.sc, (Math.random() - 0.5) * 0.4, 0.15, (Math.random() - 0.5) * 0.4, 0.6, 0xc9c4bd); }
+      if (k >= 1) { r.on = false; r.mesh.visible = false; fxBoom(r.b[0], r.b[1], r.b[2], r.sc); ES.audio.sfx(r.sc > 1.5 ? 'boom2' : 'boom', 0.9); }
+    });
   }
 
   /* =====================================================================
@@ -781,15 +888,15 @@
     } catch (e) { return 0; }
   }
 
-  G.addTracer = function (ax, ay, az, bx, by, bz, team, color) {
+  G.addTracer = function (ax, ay, az, bx, by, bz, team, color, wid, life) {
     const tr = tracers[tracerI++ % tracers.length], m = tr.mesh;
     const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (len < 0.1) return;
     m.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
     m.lookAt(bx, by, bz);
-    m.scale.set(1, 1, len);
+    m.scale.set(wid || 1, wid || 1, len);
     m.material.color.setHex(color || (team === 1 ? 0xff9a6d : 0x7fd0ff));
-    m.material.opacity = 0.9; m.visible = true; tr.life = 0.12;
+    m.material.opacity = 0.9; m.visible = true; tr.life = tr.max = life || 0.12;
   };
 
   function burst(x, y, z, color, n) {
@@ -820,20 +927,34 @@
     ES.audio.sfx(name, vol, d > 0.1 ? clamp((dx * rx + dz * rz) / d, -1, 1) * 0.8 : 0);
   };
 
+  /* ---------------- special weapons (bought in My Profile, carried in slot 2, Q swaps) ---------------- */
+  function spMag(id) { const W = ES.WEAPONS[id]; return W && W.owned ? W.mag : 0; }
+  function spStart(o) {                                     // the special weapon this player carries now ('' = none); the teacher's switch can turn it off in a class match
+    try { if (o && o.net && !o.net.sw) return ''; return (ES.progress && ES.progress.special()) || ''; } catch (e) { return ''; }
+  }
+  function swapSlot() {
+    if (!S || S.phase !== 'play' || S.qOpen || S.paused || !S.sw || !player.alive) return;
+    const W = ES.WEAPONS[S.sw];
+    S.slot = S.slot === 1 ? 0 : 1; S.fireCd = Math.max(S.fireCd, 0.3);
+    mountGun(S.slot === 1 ? S.sw : S.weapon);
+    ES.audio.sfx('pickup', 0.6);
+    toast(S.slot === 1 ? W.icon + ' ' + W.name + (S.swAmmo > 0 ? ' ready!' : ' needs a reload: press R') : 'Back to your blaster 🔫', 1.5);
+  }
+
   /* ---------------- bonus weapons ---------------- */
   function giveWeapon(id) {
     const W = ES.WEAPONS[id]; if (!W || id === 'pistol' || !S) return;
-    S.weapon = id; S.wAmmo = W.mag; S.wTime = W.secs; S.fireCd = 0.2; mountGun(id);
+    S.slot = 0; S.weapon = id; S.wAmmo = W.mag; S.wTime = W.secs; S.fireCd = 0.2; mountGun(id);
     toast(W.icon + ' ' + W.name + '! ' + W.mag + ' shots, ' + W.secs + ' seconds', 3);
     ES.audio.sfx('pickup'); ES.audio.announce && ES.audio.announce('weapon');
   }
   function dropWeapon(silent) {
     if (!S || S.weapon === 'pistol') return;
-    S.weapon = 'pistol'; S.wAmmo = 0; S.wTime = 0; mountGun('pistol');
+    S.weapon = 'pistol'; S.wAmmo = 0; S.wTime = 0; mountGun(S.slot === 1 && S.sw ? S.sw : 'pistol');
     if (!silent) { toast('Back to your blaster 🔫', 1.6); ES.audio.sfx('wpnEnd'); }
   }
   function randomWeapon() {
-    const list = ES.WEAPON_IDS.filter(function (w) { return w !== S.weapon; });
+    const list = ES.CRATE_IDS.filter(function (w) { return w !== S.weapon; });
     return list[Math.floor(Math.random() * list.length)];
   }
   /* 3 right answers in a row = a bonus weapon (solo: given here, class match: the referee gives it) */
@@ -890,8 +1011,8 @@
   }
 
   function playerShoot() {
-    const wid = S.weapon, W = ES.WEAPONS[wid] || ES.WEAPONS.pistol, bonus = wid !== 'pistol';
-    if (bonus) S.wAmmo--; else S.ammo--;
+    const sp = S.slot === 1 && !!S.sw, wid = sp ? S.sw : S.weapon, W = ES.WEAPONS[wid] || ES.WEAPONS.pistol, bonus = wid !== 'pistol';
+    if (sp) S.swAmmo--; else if (bonus) S.wAmmo--; else S.ammo--;
     S.fireCd = W.interval; S.stats.shots++;
     const moving = Math.hypot(player.vx, player.vz) > 1;
     const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
@@ -903,7 +1024,11 @@
       const d = aimDir(W.pellets > 1 ? W.spread : (bonus ? W.spread : (moving ? 0.012 : 0.004)));
       const res = G.castShot(player, ox, oy, oz, d[0], d[1], d[2], W.range, aim);
       if (!first) { first = res; sendEnd = [ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t]; }
-      if (n < 3 || W.pellets === 1) G.addTracer(ox + d[0] * 0.6 + rx * 0.22, oy + d[1] * 0.6 - 0.18, oz + d[2] * 0.6 + rz * 0.22, ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, myTeam(), col);
+      if ((n < 3 || W.pellets === 1) && !W.splash) {
+        const tx = ox + d[0] * 0.6 + rx * 0.22, ty = oy + d[1] * 0.6 - 0.18, tz = oz + d[2] * 0.6 + rz * 0.22;
+        if (W.beam) { G.addTracer(tx, ty, tz, ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, myTeam(), col, 2.2, 0.35); G.addTracer(tx, ty, tz, ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, myTeam(), 0xffffff, 0.7, 0.35); }   // Long Shot: a thick glowing laser with a white core
+        else G.addTracer(tx, ty, tz, ox + d[0] * res.t, oy + d[1] * res.t, oz + d[2] * res.t, myTeam(), col);
+      }
       if (res.target) {
         S.stats.hits++; if (res.head) S.stats.heads++;
         hits.push([res.target.eid, res.head ? 1 : 0]);
@@ -922,39 +1047,44 @@
     }
     if (W.splash) {                                    // rocket: a big blast where it lands, hurting everybody close by
       const bx = sendEnd[0], by = sendEnd[1], bz = sendEnd[2];
-      burst(bx, by, bz, 0xff8a3c, 16); burst(bx, by + 0.4, bz, 0xffd23f, 10);
-      ES.audio.sfx('boom', 0.9);
+      const fd = aimDir(0), big = W.splashR >= 6 ? 2 : 1;
+      fxRocket(ox + rx * 0.22 + fd[0] * 0.6, oy - 0.2 + fd[1] * 0.6, oz + rz * 0.22 + fd[2] * 0.6, bx, by, bz, big);     // the rocket flies, then the blast, smoke and shockwave happen where it lands
+      for (let q = 0; q < 3 * big; q++) puff(ox + fd[0] * 1.2, oy - 0.25 + fd[1] * 1.2, oz + fd[2] * 1.2, 0.35 * big, (Math.random() - 0.5) * 1.2, 0.3 + Math.random() * 0.6, (Math.random() - 0.5) * 1.2, 0.8, 0xd8d2c8);   // back-blast smoke
       for (let k = 0; k < ents.length; k++) {
         const t = ents[k];
         if (!t.alive || t.team === myTeam() || (first.target === t)) continue;
         const d2 = Math.hypot(t.x - bx, (t.y + 1) - by, t.z - bz);
         if (d2 < W.splashR) {
           if (NET) { if (t.protT <= 0) hitAny = true; }
-          else if (G.damage(t, Math.max(10, W.splash * (1 - d2 / W.splashR)), player, false)) hitAny = true;
+          else if (G.damage(t, W.flat ? W.splash : Math.max(10, W.splash * (1 - d2 / W.splashR)), player, false)) hitAny = true;
         }
       }
     }
     ES.audio.sfx(bonus ? 'w_' + wid : 'shoot', 0.9);
     if (ultraU) ultraU.shot();
-    muzzle.visible = true; S.muzzleT = 0.05; S.recoil = bonus && W.interval > 0.5 ? 1.8 : 1;
+    muzzle.visible = true; S.muzzleT = W.flash ? 0.08 : 0.05; muzzle.scale.setScalar(W.flash || 1);
+    S.recoil = W.kick || (bonus && W.interval > 0.5 ? 1.8 : 1);
+    if (W.shake) S.shake = Math.max(S.shake || 0, W.shake);
+    if (W.flash && !W.splash) { const fd2 = aimDir(0); burst(ox + fd2[0] * 2.6, oy + fd2[1] * 2.6 - 0.2, oz + fd2[2] * 2.6, col, 3); }    // muzzle sparks
     if (hitAny) {
       S.hitMark = 0.18; S.hitHead = headAny;
       if (first.target && first.target.alive) ES.audio.sfx(headAny ? 'headshot' : 'hit');
       else if (!first.target) ES.audio.sfx('hit');
     }
-    if (bonus && S.wAmmo <= 0) dropWeapon(false);
+    if (bonus && !sp && S.wAmmo <= 0) dropWeapon(false);
   }
 
   /* =====================================================================
      QUESTION  ->  AMMO
      ===================================================================== */
   /* kind = '' (a normal ammo question, key R) or 'rescue' / 'plant' / 'defuse' (a mission question, key E in Rescue & Bomb) */
-  function openQuestion(kind) {
+  function openQuestion(kind, special) {
     if (S.phase !== 'play' || S.paused || S.qOpen || !player.alive) return;
-    if (!kind && S.ammo >= AMMO.max) { toast('Your blaster is already full! ⚡', 1.6); return; }
+    if (special && S.swAmmo >= spMag(S.sw)) { toast(ES.WEAPONS[S.sw].name + ' is already loaded! 🚀', 1.6); return; }
+    if (!kind && !special && S.ammo >= AMMO.max) { toast('Your blaster is already full! ⚡', 1.6); return; }
     if (S.qCd > 0) { toast('Next question in ' + Math.ceil(S.qCd) + ' s…', 1.2); return; }
     clearTimeout(closeTimer);
-    S.qMission = kind || '';
+    S.qMission = kind || ''; S.qSpecial = !!special && !kind;
     S.qMax = st.qTime;                                                     // seconds to answer (0 = no limit)
     if (kind === 'defuse' && RB) S.qMax = Math.max(2, Math.min(st.qTime || 99, RB.eng.st.b.t - 0.5));   // the bomb will not wait for a slow answer
     S.cur = quiz.next(); S.qOpen = true; S.qState = 'asking'; S.qTime = S.qMax; fireHeld = false;
@@ -974,7 +1104,7 @@
       b.addEventListener('click', function () { chooseAnswer(i); });
       box.appendChild(b);
     });
-    $('qp-reward').textContent = kind ? RB_TXT[kind].ask + '  (+' + st.reward + ' ⚡ too)' : '+' + st.reward + ' ⚡ ammo for a correct answer';
+    $('qp-reward').textContent = S.qSpecial ? ES.WEAPONS[S.sw].icon + ' A correct answer reloads your ' + ES.WEAPONS[S.sw].name : kind ? RB_TXT[kind].ask + '  (+' + st.reward + ' ⚡ too)' : '+' + st.reward + ' ⚡ ammo for a correct answer';
     $('qp-fb').className = 'qfb hidden'; $('qp-fb').innerHTML = '';
     $('qp-timer').classList.toggle('hidden', !S.qMax);
     $('qp-fill').style.width = '100%'; $('qp-fill').classList.remove('urgent');
@@ -1001,11 +1131,12 @@
       bs.c++; S.stats.qRight++; S.streak++; if (S.streak > S.stats.bestStreak) S.stats.bestStreak = S.streak;
       let perk = 0; try { perk = ES.progress ? ES.progress.perks().answerBonus : 0; } catch (e) { perk = 0; }      // small level perk
       let gain = st.reward + (S.streak >= 3 ? 3 : 0) + perk;
-      S.ammo = Math.min(AMMO.max, S.ammo + gain);
+      if (S.qSpecial) S.swAmmo = spMag(S.sw); else S.ammo = Math.min(AMMO.max, S.ammo + gain);
       S.qCd = 2;
       fb.className = 'qfb good';
       const earn = S.streak > 0 && S.streak % 3 === 0;
       fb.innerHTML = '<b>Correct! 🎉</b> +' + gain + ' ⚡ ammo' + (S.streak >= 3 ? ' (streak bonus!)' : '') + (perk ? ' (+' + perk + ' level perk)' : '') + (S.streak === 5 ? '<br><b>🔥 On fire! 5 in a row!</b>' : (S.streak === 10 ? '<br><b>⚡ UNSTOPPABLE! 10 in a row!</b>' : '')) + (S.qMission ? '<br><b>' + RB_TXT[S.qMission].done + '</b>' : '') + (earn ? '<br><b>🎁 3 in a row = a BONUS WEAPON!</b>' : '');
+      if (S.qSpecial) fb.innerHTML = '<b>Correct! 🎉</b> ' + ES.WEAPONS[S.sw].icon + ' ' + ES.WEAPONS[S.sw].name + ' reloaded!';
       if (S.qMission) rbDo(S.qMission);
       if (BOSS) { if (NET) netSend({ t: 'ba' }); else BOSS.eng.answer(player); }          // Boss Round: every right answer breaks the shield a little
       if (earn) setTimeout(function () { if (S && S.phase === 'play') earnWeapon(); }, 1150);
@@ -1086,7 +1217,7 @@
     show('ov-ready', false);
     if (NET) {                               // class match: tell the referee we are ready and wait for the countdown
       S.phase = NET.hostPh === 'play' ? 'play' : (NET.hostPh === 'count' ? 'count' : 'wait');
-      $('count-num').textContent = '⏳'; show('ov-count', S.phase !== 'play'); netSend({ t: 'ready' }); tryLock(); return;
+      $('count-num').textContent = '⏳'; show('ov-count', S.phase !== 'play'); netSend({ t: 'ready' }); if (S.sw) netSend({ t: 'sw', id: S.sw }); tryLock(); return;
     }
     S.phase = 'count'; S.countT = 3.2; S.lastCount = 4;
     show('ov-count', true);
@@ -1218,7 +1349,8 @@
     keys[c] = true;
     if (S.phase === 'play' && NET && NET.qm && c === 'KeyC') { openQm(); return; }
     if (S.phase !== 'play') return;
-    if (c === 'KeyR') openQuestion('');
+    if (c === 'KeyR') openQuestion('', S.slot === 1 && !!S.sw);
+    else if (c === 'KeyQ') swapSlot();
     else if (c === 'KeyE' && NET && reviveTarget()) openRevive();
     else if (c === 'KeyE' && (RB || CF)) openMission();
     else if (c === 'KeyF') fireHeld = true;
@@ -1487,7 +1619,9 @@
 
     // blaster
     if (fireHeld && S.fireCd <= 0 && !S.qOpen) {
-      if (S.weapon !== 'pistol' || S.ammo > 0) playerShoot();
+      const spOn = S.slot === 1 && !!S.sw;
+      if (spOn ? S.swAmmo > 0 : (S.weapon !== 'pistol' || S.ammo > 0)) playerShoot();
+      else if (spOn) { S.fireCd = 0.35; ES.audio.sfx('empty'); toast('Reload it: press R and answer a question 🚀', 1.6); }
       else { S.fireCd = 0.35; ES.audio.sfx('empty'); toast('Out of ammo! Press R and answer a question ⚡', 1.6); S.pulseAmmo = 1; }
     }
   }
@@ -1605,23 +1739,25 @@
     let eyeY = p.y + P.eye, pit = pitch, roll = 0;
     if (!p.alive && S.phase === 'play') { eyeY = p.y + 0.5; pit = -0.35; roll = 0.25; }
     camera.position.set(p.x, eyeY, p.z);
-    camera.rotation.set(pit, yaw, roll, 'YXZ');
+    if (S.shake > 0) { S.shake = Math.max(0, S.shake - dt * 0.09); const sh = S.shake; camera.rotation.set(pit + (Math.random() - 0.5) * sh, yaw + (Math.random() - 0.5) * sh, roll, 'YXZ'); }
+    else camera.rotation.set(pit, yaw, roll, 'YXZ');
     if (gun) {
       gun.visible = p.alive;
       if (S.recoil > 0) S.recoil = Math.max(0, S.recoil - dt * 9);
-      gun.position.z = -0.5 + S.recoil * 0.05; gun.rotation.x = S.recoil * 0.05;
+      gun.position.z = (gun.userData.bz || -0.5) + S.recoil * 0.05; gun.rotation.x = S.recoil * 0.05;
       if (S.muzzleT > 0) { S.muzzleT -= dt; if (S.muzzleT <= 0) muzzle.visible = false; }
     }
   }
 
   function updateEffects(dt) {
+    updateBooms(dt);
     for (let i = 0; i < rings.length; i++) {
       const r = rings[i];
       if (r.life > 0) { r.life -= dt; const k = 1 - Math.max(0, r.life) / 0.32; r.mesh.scale.setScalar(1 + k * 5); r.mesh.material.opacity = (1 - k) * 0.9; if (r.life <= 0) r.mesh.visible = false; }
     }
     for (let i = 0; i < tracers.length; i++) {
       const t = tracers[i];
-      if (t.life > 0) { t.life -= dt; t.mesh.material.opacity = Math.max(0, t.life / 0.12) * 0.9; if (t.life <= 0) t.mesh.visible = false; }
+      if (t.life > 0) { t.life -= dt; t.mesh.material.opacity = Math.max(0, t.life / (t.max || 0.12)) * 0.9; if (t.life <= 0) t.mesh.visible = false; }
     }
     for (let i = 0; i < sparks.length; i++) {
       const s = sparks[i];
@@ -1669,7 +1805,18 @@
     setText('hp-text', String(Math.ceil(p.hp)));
     const hpEl = $('hp-fill'); hpEl.style.width = clamp(p.hp, 0, 100) + '%';
     hpEl.className = p.hp < 30 ? 'low' : '';
-    if (S.weapon !== 'pistol') {                            // bonus weapon: show its own shots + time left
+    const chip = $('sw-chip');
+    if (chip) {
+      chip.classList.toggle('hidden', !S.sw);
+      if (S.sw) { const SW = ES.WEAPONS[S.sw]; setText('sw-chip', S.slot === 1 ? '🔫 Q: back to blaster' : SW.icon + ' Q: ' + SW.name + '  ×' + S.swAmmo); chip.classList.toggle('empty', S.slot !== 1 && S.swAmmo === 0); }
+    }
+    if (S.slot === 1 && S.sw) {                             // special weapon in hand: its own shots, reload with a right answer
+      const SW = ES.WEAPONS[S.sw];
+      setText('ammo-lbl', SW.icon + ' ' + SW.name.toUpperCase());
+      setText('ammo-num', String(S.swAmmo));
+      $('ammo').classList.remove('low'); $('ammo').classList.add('bonus'); $('ammo').classList.toggle('empty', S.swAmmo === 0);
+      setText('ammo-hint', S.swAmmo === 0 ? 'Press R – answer to reload!' : 'Q = blaster  ·  R = reload');
+    } else if (S.weapon !== 'pistol') {                     // bonus weapon: show its own shots + time left
       const W = ES.WEAPONS[S.weapon];
       setText('ammo-lbl', W.icon + ' ' + W.name.toUpperCase());
       setText('ammo-num', String(S.wAmmo));
@@ -2198,8 +2345,8 @@
       G.addTracer(ev[1], ev[2], ev[3], ev[4], ev[5], ev[6], ev[7], WW ? WW.color : 0);
       G.soundAt(WW ? 'w_' + ev[9] : 'botShoot', ev[1], ev[3], WW ? 0.8 : 0.7);
     } else if (k === 'boom') {
-      burst(ev[1], ev[2], ev[3], 0xff8a3c, 16); burst(ev[1], ev[2] + 0.4, ev[3], 0xffd23f, 10);
-      if (ev[4] !== NET.you) G.soundAt('boom', ev[1], ev[3], 1);
+      const big = (ev[5] || 4) >= 6 ? 2 : 1;                 // ev[5] = blast radius: the Mega Bazooka has a bigger blast
+      if (ev[4] !== NET.you) { fxBoom(ev[1], ev[2], ev[3], big); G.soundAt(big > 1 ? 'boom2' : 'boom', ev[1], ev[3], 1); }
     } else if (k === 'kill') {
       const a = NET.byEid[ev[1]], v = NET.byEid[ev[2]];
       if (!v) return;

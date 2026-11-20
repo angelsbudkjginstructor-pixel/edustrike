@@ -99,13 +99,15 @@
 
   /* ---------- make any loaded profile safe ---------- */
   function blank(name, ch) {
-    return { v: 1, name: name, ch: ch, xp: 0, matches: 0, wins: 0, kills: 0, right: 0, asked: 0, bestStreak: 0, revives: 0, bossWins: 0, subj: {}, badges: [], equip: { helmet: 'h0', gun: 'g0', trail: 't0', tag: 'n0' }, updated: 0, dirty: false };
+    return { v: 1, name: name, ch: ch, xp: 0, pts: 0, weps: [], sw: '', matches: 0, wins: 0, kills: 0, right: 0, asked: 0, bestStreak: 0, revives: 0, bossWins: 0, subj: {}, badges: [], equip: { helmet: 'h0', gun: 'g0', trail: 't0', tag: 'n0' }, updated: 0, dirty: false };
   }
   const num = function (v, max) { v = Math.floor(Number(v)); return isFinite(v) && v > 0 ? Math.min(v, max || 1e7) : 0; };
   function clean(raw, name, ch) {
     const P = blank(name, ch);
     if (!raw || typeof raw !== 'object') return P;
-    P.xp = num(raw.xp, 1e6); P.matches = num(raw.matches); P.wins = num(raw.wins); P.kills = num(raw.kills); P.right = num(raw.right); P.asked = num(raw.asked); P.bestStreak = num(raw.bestStreak, 999); P.revives = num(raw.revives, 99999); P.bossWins = num(raw.bossWins, 99999);
+    P.xp = num(raw.xp, 1e6); P.pts = raw.pts === undefined ? P.xp : num(raw.pts, 1e7);   /* profiles from before the shop: their XP becomes their first points */
+    P.weps = Array.isArray(raw.weps) ? raw.weps.filter(function (w, i, a) { return ES.SPECIAL_IDS && ES.SPECIAL_IDS.indexOf(w) >= 0 && a.indexOf(w) === i; }) : [];
+    P.sw = (typeof raw.sw === 'string' && P.weps.indexOf(raw.sw) >= 0) ? raw.sw : ''; P.matches = num(raw.matches); P.wins = num(raw.wins); P.kills = num(raw.kills); P.right = num(raw.right); P.asked = num(raw.asked); P.bestStreak = num(raw.bestStreak, 999); P.revives = num(raw.revives, 99999); P.bossWins = num(raw.bossWins, 99999);
     if (raw.subj && typeof raw.subj === 'object') Object.keys(raw.subj).slice(0, 40).forEach(function (k) { P.subj[String(k).slice(0, 30)] = num(raw.subj[k]); });
     if (Array.isArray(raw.badges)) P.badges = raw.badges.filter(function (b) { return typeof b === 'string' && b.length < 40; }).slice(0, 80);
     KINDS.forEach(function (k) {
@@ -120,6 +122,7 @@
     const win = (b.xp > a.xp || (b.xp === a.xp && b.updated > a.updated)) ? b : a, lose = win === a ? b : a;
     const M = clean(win, a.name, a.ch);
     lose.badges.forEach(function (x) { if (M.badges.indexOf(x) < 0) M.badges.push(x); });
+    (lose.weps || []).forEach(function (w) { if (M.weps.indexOf(w) < 0) M.weps.push(w); });          // never lose a weapon that was bought
     M.bestStreak = Math.max(a.bestStreak, b.bestStreak); M.revives = Math.max(a.revives || 0, b.revives || 0); M.bossWins = Math.max(a.bossWins || 0, b.bossWins || 0);
     Object.keys(lose.subj).forEach(function (k) { M.subj[k] = Math.max(M.subj[k] || 0, lose.subj[k]); });
     return M;
@@ -212,7 +215,7 @@
     if (out.total > XP_CAP) { out.gain.push(['(match limit)', XP_CAP - out.total]); out.total = XP_CAP; }
     if (!P) return out;                                                                   // a guest: awards shown, nothing saved
     out.before = { xp: P.xp, lv: levelOf(P.xp) };
-    P.xp += out.total; P.matches++; if (m.outcome === 'win') P.wins++;
+    P.xp += out.total; P.pts = (P.pts || 0) + out.total; P.matches++; if (m.outcome === 'win') P.wins++;
     P.kills += kills; P.right += right; P.asked += asked; P.bestStreak = Math.max(P.bestStreak, best); P.revives = (P.revives || 0) + revives; if (bossWin) P.bossWins = (P.bossWins || 0) + 1;
     Object.keys(m.bySubj || {}).forEach(function (k) { const v = m.bySubj[k]; P.subj[k] = (P.subj[k] || 0) + num(v && v.c); });
     const got = function (id) { if (P.badges.indexOf(id) < 0) { P.badges.push(id); out.newBadges.push(id); } };
@@ -247,6 +250,24 @@
     const it = item(kind, id); if (!it || it.id !== id || it.lvl > levelOf(P.xp)) return false;
     P.equip[kind] = id; P.updated = Date.now(); P.dirty = true; store(); changed(); sync(); return true;
   }
+  /* ---------- special weapons: buy with saved points (levels never go down), carry one in slot 2 ---------- */
+  function special() { return (P && P.sw && P.weps.indexOf(P.sw) >= 0) ? P.sw : ''; }
+  function buy(id) {
+    const W = ES.WEAPONS[id];
+    if (!P) return { ok: false, msg: 'Sign in first.' };
+    if (!W || !W.owned || ES.SPECIAL_IDS.indexOf(id) < 0) return { ok: false, msg: 'Unknown weapon.' };
+    if (P.weps.indexOf(id) >= 0) return { ok: false, msg: 'You already have it.' };
+    if ((P.pts || 0) < W.price) return { ok: false, msg: 'Not enough points yet. You need ' + (W.price - P.pts) + ' more.' };
+    P.pts -= W.price; P.weps.push(id); if (!P.sw) P.sw = id;
+    P.updated = Date.now(); P.dirty = true; store(); changed(); sync();
+    return { ok: true };
+  }
+  function setSpecial(id) {                       // '' = carry no special weapon
+    if (!P) return false;
+    if (id && P.weps.indexOf(id) < 0) return false;
+    P.sw = id || ''; P.updated = Date.now(); P.dirty = true; store(); changed(); sync(); return true;
+  }
+
   /* a tiny code other players receive in a class match so they can see your helmet (nothing else is sent) */
   function skinCode() { return P ? P.equip.helmet + ':' + P.equip.tag : 'h0:n0'; }
   function tagById(id) { const it = item('tag', id); return it && it.id === id ? it : CAT.tag[0]; }
@@ -255,7 +276,7 @@
   ES.progress = {
     cat: CAT, kinds: KINDS, kindName: KIND_NAME, perkList: PERKS, badgeInfo: badgeInfo, badgeIds: Object.keys(BADGES),
     get: function () { return P; }, signedIn: function () { return !!P; }, info: info, xpFor: xpFor, levelOf: levelOf, maxLevel: MAX_LEVEL,
-    signIn: signIn, signOut: signOut, award: award, perks: perks, equipped: equipped, equip: equip, skinCode: skinCode, helmetById: helmetById, tagById: tagById,
+    signIn: signIn, signOut: signOut, award: award, perks: perks, equipped: equipped, equip: equip, skinCode: skinCode, special: special, buy: buy, setSpecial: setSpecial, points: function () { return P ? (P.pts || 0) : 0; }, helmetById: helmetById, tagById: tagById,
     sync: sync, onChange: function (f) { listeners.push(f); }, lastName: function () { try { const l = JSON.parse(localStorage.getItem(LAST) || 'null'); return l ? l.name : ''; } catch (e) { return ''; } }
   };
   restore();

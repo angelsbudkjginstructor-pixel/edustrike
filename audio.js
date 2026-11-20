@@ -280,6 +280,42 @@
     land: function (v, p) { tone('sine', 90, 45, 0.14, 0.2 * v, 0, p); noise(0.08, 0.1 * v, 700, 0, p); },
     jump: function () { tone('sine', 230, 560, 0.09, 0.07); noise(0.05, 0.05, 2500, 0, 0, 'bandpass'); }
   };
+  /* ---- the bought special weapons: each has its own, heavier sound ---- */
+  // Mega Bazooka: a hard "thoomp" launch, a rising rocket whoosh and a low rumble
+  SFX.w_bazooka = function (v, p) {
+    noise(0.1, 0.34 * v, 3500, 0, p);
+    tone('sine', 140, 40, 0.4, 0.4 * v, 0, p);
+    tone('sawtooth', 75, 32, 0.5, 0.26 * v, 0, p, { cut: 600 });
+    noise(0.9, 0.3 * v, 600, 0.04, p);
+    tone('triangle', 260, 950, 0.6, 0.07 * v, 0.06, p);
+  };
+  // the big blast: a crack, a deep boom, crackling debris and a long rumble
+  SFX.boom2 = function (v, p) {
+    noise(0.12, 0.4 * v, 4000, 0, p);
+    noise(1.2, 0.5 * v, 450, 0.02, p);
+    tone('sine', 85, 20, 1.0, 0.6 * v, 0, p);
+    tone('sawtooth', 170, 30, 0.6, 0.18 * v, 0, p, { cut: 500 });
+    noise(0.3, 0.22 * v, 2600, 0.12, p);
+    noise(0.9, 0.18 * v, 260, 0.25, p);
+  };
+  // Super Scatter: a fat shotgun blast and then the pump "ka-chak"
+  SFX.w_supershot = function (v, p) {
+    noise(0.3, 0.44 * v, 2200, 0, p);
+    tone('sine', 120, 28, 0.32, 0.45 * v, 0, p);
+    tone('square', 520, 60, 0.1, 0.12 * v, 0, p, { cut: 1800 });
+    tone('square', 900, 500, 0.03, 0.1 * v, 0.32, p);
+    tone('square', 650, 380, 0.04, 0.1 * v, 0.42, p);
+    noise(0.05, 0.12 * v, 6000, 0.32, p, 'highpass');
+  };
+  // Long Shot: a muffled crack, a long laser zing and the bolt "click"
+  SFX.w_longshot = function (v, p) {
+    noise(0.06, 0.22 * v, 6000, 0, p, 'highpass');
+    tone('sawtooth', 2800, 200, 0.6, 0.12 * v, 0, p, { cut: 5000 });
+    tone('sine', 900, 80, 0.55, 0.14 * v, 0, p);
+    tone('sine', 70, 35, 0.25, 0.3 * v, 0, p);
+    tone('square', 1400, 900, 0.03, 0.08 * v, 0.5, p);
+    tone('square', 1100, 700, 0.03, 0.08 * v, 0.62, p);
+  };
 
   /* ===================== epic action music ===================== */
   // 8-bar loop in D minor: [bass root (MIDI), minor?]

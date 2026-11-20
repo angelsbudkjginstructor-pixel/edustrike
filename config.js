@@ -113,9 +113,17 @@
     rapid:   { name: 'Rapid Blaster',   icon: '⚡', dmg: 11,  head: 18,  pellets: 1, spread: 0.02, interval: 0.075, range: 70,  mag: 70, secs: 25, color: 0xffe14a },
     scatter: { name: 'Scatter Blaster', icon: '💥', dmg: 13,  head: 16,  pellets: 8, spread: 0.075, interval: 0.75, range: 32,  mag: 12, secs: 30, color: 0xff9a3c },
     sniper:  { name: 'Sniper Laser',    icon: '🎯', dmg: 100, head: 100, pellets: 1, spread: 0,    interval: 1.0,  range: 160, mag: 6,  secs: 30, color: 0x7dffb0 },
-    rocket:  { name: 'Rocket Blast',    icon: '🚀', dmg: 70,  head: 70,  pellets: 1, spread: 0,    interval: 1.3,  range: 90,  mag: 5,  secs: 30, color: 0xff5a3c, splash: 55, splashR: 4 }
+    rocket:  { name: 'Rocket Blast',    icon: '🚀', dmg: 70,  head: 70,  pellets: 1, spread: 0,    interval: 1.3,  range: 90,  mag: 5,  secs: 30, color: 0xff5a3c, splash: 55, splashR: 4 },
+    /* ---- SPECIAL WEAPONS: students BUY these in My Profile with their saved points and carry one in slot 2 (key Q swaps).
+       price = points. mag = shots per reload; a right answer (R while holding it) reloads it. interval = seconds between shots.
+       flat = everybody inside the blast radius is tagged at full strength. kick = how hard the gun kicks, shake = screen shake, beam = a glowing laser line, flash = muzzle flash size. Change the numbers to balance the game. */
+    bazooka:   { name: 'Mega Bazooka',  icon: '🚀', dmg: 100, head: 100, pellets: 1, spread: 0,    interval: 4,   range: 80,  mag: 1, color: 0xa855f7, splash: 100, splashR: 8, flat: true, owned: true, price: 1000, kick: 4, shake: 0.03, about: 'Tags EVERYONE close together at once. Very slow to reload.' },
+    supershot: { name: 'Super Scatter', icon: '💥', dmg: 16,  head: 20,  pellets: 10, spread: 0.07, interval: 1.4, range: 30,  mag: 4, color: 0x22d3ee, owned: true, price: 400,  kick: 2.6, flash: 2, about: 'Close range. A big spray of pellets.' },
+    longshot:  { name: 'Long Shot',     icon: '🎯', dmg: 100, head: 100, pellets: 1, spread: 0,    interval: 1.8, range: 220, mag: 3, color: 0xff7ad9, owned: true, price: 250,  kick: 3, beam: true, flash: 1.5, about: 'Far away. One shot tags a player.' }
   };
-  ES.WEAPON_IDS = ['rapid', 'scatter', 'sniper', 'rocket'];
+  ES.WEAPON_IDS = ['rapid', 'scatter', 'sniper', 'rocket', 'bazooka', 'supershot', 'longshot'];    // every weapon (the order is used inside network messages: never re-order)
+  ES.CRATE_IDS = ['rapid', 'scatter', 'sniper', 'rocket'];                                           // what weapon crates and 3-in-a-row rewards can give
+  ES.SPECIAL_IDS = ['longshot', 'supershot', 'bazooka'];                                             // what students can buy (cheapest first)
   /* Weapon crates are RARE: a pair of gold crates (one near each team) appears, waits ~28 s, then vanishes
      if nobody took it. The next pair comes about a minute later. first = seconds after GO for the first pair. */
   ES.CRATE = { radius: 1.3, first: 40, every: 60, life: 28 };

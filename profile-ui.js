@@ -76,17 +76,19 @@
     who.appendChild(el('div', 'pf-lv', 'Level ' + I.level + (I.level >= PR.maxLevel ? ' (MAX)' : '')));
     const bar = el('div', 'pf-bar'); const fill = el('div', 'pf-fill'); fill.style.width = I.pct + '%'; bar.appendChild(fill); who.appendChild(bar);
     who.appendChild(el('div', 'pf-xp', I.level >= PR.maxLevel ? p.xp + ' XP' : p.xp + ' XP  ·  ' + (I.need - I.into) + ' XP to level ' + (I.level + 1)));
+    who.appendChild(el('div', 'pf-pts', '⭐ ' + PR.points() + ' points to spend on weapons'));
     who.appendChild(el('div', 'pf-save', ES.PROGRESS && ES.PROGRESS.url ? (p.dirty ? '☁️ Waiting to save to the class sheet…' : '☁️ Saved to the class sheet') : '💾 Saved on this computer'));
     const acc = p.asked ? Math.round(100 * p.right / p.asked) : 0;
     card.appendChild(el('div', 'pf-stats', '🎮 ' + p.matches + (p.matches === 1 ? ' match' : ' matches') + '  ·  🏆 ' + p.wins + ' wins  ·  🧠 ' + p.right + '/' + p.asked + ' right (' + acc + '%)  ·  🔥 best streak ' + p.bestStreak));
 
     const tabs = el('div', 'pf-tabs'); card.appendChild(tabs);
-    [['locker', '🎒 Locker'], ['perks', '⚡ Perks'], ['badges', '🏅 Badges']].forEach(function (t) {
+    [['locker', '🎒 Locker'], ['weapons', '🚀 Weapons'], ['perks', '⚡ Perks'], ['badges', '🏅 Badges']].forEach(function (t) {
       const b = el('button', 'pf-tab' + (tab === t[0] ? ' on' : ''), t[1]); b.type = 'button';
       b.addEventListener('click', function () { tab = t[0]; render(); }); tabs.appendChild(b);
     });
     const body = el('div', 'pf-body'); card.appendChild(body);
     if (tab === 'locker') lockerView(body, p, I, cv);
+    else if (tab === 'weapons') weaponsView(body, p);
     else if (tab === 'perks') perksView(body, I);
     else badgesView(body, p);
 
@@ -110,6 +112,38 @@
       });
     });
   }
+  /* ---------- the weapon shop: buy with saved points (your level never goes down), carry ONE special weapon in slot 2 (key Q in a match) ---------- */
+  let sure = '';                                                  // the weapon the student tapped once ("tap again to buy")
+  function weaponsView(body, p) {
+    body.appendChild(el('p', 'hint', 'You earn points after every match. Buy a special weapon, then press Q in a match to swap to it. Answer a question (R) to reload it. Your level never goes down.'));
+    const list = el('div', 'pf-wlist'); body.appendChild(list);
+    ES.SPECIAL_IDS.forEach(function (id) {
+      const W = ES.WEAPONS[id], has = p.weps.indexOf(id) >= 0, carry = p.sw === id, can = PR.points() >= W.price;
+      const c = el('div', 'pf-wcard' + (carry ? ' on' : '') + (!has && !can ? ' lock' : '')); list.appendChild(c);
+      c.appendChild(el('div', 'pf-wi', W.icon));
+      const mid = el('div', 'pf-wm'); c.appendChild(mid);
+      mid.appendChild(el('div', 'pf-wn', W.name));
+      mid.appendChild(el('div', 'pf-wa', W.about));
+      mid.appendChild(el('div', 'pf-ws', W.mag + (W.mag === 1 ? ' shot' : ' shots') + ' per reload  ·  ' + (W.interval >= 3 ? 'very slow' : W.interval >= 1.5 ? 'slow' : 'medium') + ' fire'));
+      const b = el('button', 'btn small' + (has || can ? '' : ' ghost dark')); b.type = 'button'; c.appendChild(b);
+      if (has) {
+        b.textContent = carry ? '✔ Carrying' : 'Carry this';
+        b.addEventListener('click', function () { PR.setSpecial(carry ? '' : id); render(); });
+      } else {
+        b.textContent = sure === id ? 'Tap again to buy' : (can ? 'Buy ⭐' + W.price : '⭐' + W.price);
+        b.addEventListener('click', function () {
+          if (!can) { toastMsg('You need ' + (W.price - PR.points()) + ' more points. Play more matches! 💪'); return; }
+          if (sure !== id) { sure = id; render(); return; }
+          sure = ''; const r = PR.buy(id); if (!r.ok) toastMsg(r.msg); render();
+        });
+      }
+    });
+    if (p.weps.length) {
+      const none = el('button', 'btn small ghost dark', p.sw ? 'Carry no special weapon' : '✔ Carrying no special weapon'); none.type = 'button';
+      none.addEventListener('click', function () { PR.setSpecial(''); render(); }); body.appendChild(none);
+    }
+  }
+  function toastMsg(t) { let m = $('pf-msg'); const card = document.querySelector('#ov-profile .pf-card'); if (!card) return; if (!m) { m = el('p', 'msg bad'); m.id = 'pf-msg'; card.insertBefore(m, card.firstChild); } m.textContent = t; }
   function perksView(body, I) {
     body.appendChild(el('p', 'hint', 'Perks switch on by themselves as you level up. They are small, so every student has a fair game.'));
     PR.perkList.forEach(function (pk) {

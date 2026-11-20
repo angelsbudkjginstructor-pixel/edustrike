@@ -44,13 +44,13 @@
   function loadSettings() {
     try {
       const j = JSON.parse(localStorage.getItem(SETKEY) || '{}');
-      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-boss'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
+      ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-sw', 'm-boss'].forEach(function (id) { if (j[id]) $(id).value = j[id]; });
       if (Array.isArray(j.off)) { off = {}; j.off.forEach(function (k) { off[String(k)] = true; }); }
     } catch (e) { /* ignore */ }
   }
   function saveSettings() {
     try {
-      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-boss'].forEach(function (id) { j[id] = $(id).value; });
+      const j = {}; ['m-size', 'm-target', 'm-min', 'm-diff', 'm-gfx', 'm-map', 'm-names', 'm-mode', 'm-rounds', 'm-rmin', 'm-revive', 'm-qm', 'm-sw', 'm-boss'].forEach(function (id) { j[id] = $(id).value; });
       j.off = Object.keys(off);
       localStorage.setItem(SETKEY, JSON.stringify(j));
     } catch (e) { /* ignore */ }
@@ -208,7 +208,7 @@
     saveSettings();
     $('r-start-err').textContent = '';
     const r = ES.match.start({ teamSize: +$('m-size').value, target: +$('m-target').value, minutes: +$('m-min').value, diff: $('m-diff').value, gfx: $('m-gfx').value, map: $('m-map').value, names: $('m-names').value, topics: chosenTopics(),
-                               mode: ['rb', 'ctf', 'boss'].indexOf($('m-mode').value) >= 0 ? $('m-mode').value : 'normal', boss: $('m-boss').value, rounds: +$('m-rounds').value, rtime: +$('m-rmin').value, revive: $('m-revive').value !== 'off', qm: $('m-qm').value !== 'off' });
+                               mode: ['rb', 'ctf', 'boss'].indexOf($('m-mode').value) >= 0 ? $('m-mode').value : 'normal', boss: $('m-boss').value, rounds: +$('m-rounds').value, rtime: +$('m-rmin').value, revive: $('m-revive').value !== 'off', qm: $('m-qm').value !== 'off', sw: $('m-sw').value !== 'off' });
     if (!r.ok) { $('r-start-err').textContent = r.error; return; }
     showMatchUi(true); renderLive(ES.match.info());
   });

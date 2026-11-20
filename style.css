@@ -314,3 +314,20 @@ kbd { display: inline-block; min-width: 26px; padding: 2px 7px; margin: 0 2px; b
 /* My Profile button inside the waiting room (white card, so it needs dark text) */
 #room-profile { margin: 10px auto 8px; color: #12203a; background: #eef3ff; border-color: #b9c9ee; }
 #room-profile.in { background: linear-gradient(180deg,#ffd23f,#ffb300); border-color: #ffd23f; color: #12203a; }
+
+/* the special weapon chip under the ammo counter (Q swaps; tap it on a touch screen) */
+#sw-chip { font: inherit; font-weight: 800; font-size: 13px; margin-top: 6px; padding: 4px 12px; border-radius: 999px; border: 2px solid rgba(255,255,255,.55); background: rgba(168,85,247,.55); color: #fff; cursor: pointer; pointer-events: auto; }
+#sw-chip.empty { background: rgba(120,120,130,.55); }
+#sw-chip.hidden { display: none; }
+
+/* My Profile: the weapon shop */
+.pf-pts { font-weight: 800; color: #b45309; margin-top: 2px; }
+.pf-wlist { display: grid; gap: 10px; margin: 8px 0; }
+.pf-wcard { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 3px solid #cbd7ee; background: #f6f9ff; color: #12203a; }
+.pf-wcard.on { border-color: #22c55e; background: #eafbea; }
+.pf-wcard.lock { opacity: .75; }
+.pf-wi { font-size: 34px; }
+.pf-wm { flex: 1; text-align: left; }
+.pf-wn { font-weight: 900; font-size: 17px; }
+.pf-wa { font-size: 14px; }
+.pf-ws { font-size: 12px; color: #5b6b86; }

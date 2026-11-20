@@ -155,7 +155,7 @@
     ES.room.send(e.p, { t: 'wpn', w: id });
   }
   function randomWeapon(except) {
-    const list = ES.WEAPON_IDS.filter(function (w) { return w !== except; });
+    const list = ES.CRATE_IDS.filter(function (w) { return w !== except; });
     return list[Math.floor(rnd() * list.length)];
   }
   function onEarn(p) {
@@ -185,7 +185,9 @@
     const now = performance.now();
     const wid = (typeof m.w === 'string' && m.w !== 'pistol' && ES.WEAPONS[m.w]) ? m.w : 'pistol', W = ES.WEAPONS[wid], bonus = wid !== 'pistol';
     if (now - e.lastShot < (bonus ? W.interval * 600 : 110)) return;               // fire-rate limit (a little more relaxed than the real rate)
-    if (bonus) {                                      // you can only fire a bonus weapon you really have
+    if (W.owned) {                                    // a bought special weapon: the teacher's switch must be on and it must be the one this student carries
+      if (!M.sw || e.sw !== wid) return;
+    } else if (bonus) {                                      // you can only fire a bonus weapon you really have
       if (e.wpn !== wid || e.wAmmo <= 0 || now > e.wUntil) return;
       e.wAmmo--; if (e.wAmmo <= 0) e.wpn = null;
     }
@@ -210,11 +212,11 @@
       G.damage(t, head ? W.head : W.dmg, e, head);
     });
     if (W.splash && Math.hypot(ex - ox, ez - oz) <= W.range + 5) {          // rocket: the blast hurts everybody close to where it landed
-      M.ev.push(['boom', r2(ex), r2(ey), r2(ez), e.eid]);
+      M.ev.push(['boom', r2(ex), r2(ey), r2(ez), e.eid, W.splashR]);
       M.ents.forEach(function (t) {
         if (!t.alive || t.team === e.team || direct[t.eid]) return;
         const d = Math.hypot(t.x - ex, (t.y + 1) - ey, t.z - ez);
-        if (d < W.splashR) G.damage(t, Math.max(10, W.splash * (1 - d / W.splashR)), e, false);
+        if (d < W.splashR) G.damage(t, W.flat ? W.splash : Math.max(10, W.splash * (1 - d / W.splashR)), e, false);
       });
     }
   }
@@ -322,7 +324,7 @@
     s.topics = (Array.isArray(s.topics) ? s.topics : []).filter(function (k) { return typeof k === 'string' && k.length < 90; }).slice(0, 300);
     world = ES.buildWorld(new T.Scene(), { noVisual: true, map: s.map, ctf: s.mode === 'ctf' });
     const bossMode = s.mode === 'boss';
-    M = { id: Date.now(), revive: s.revive !== false, qm: s.qm !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
+    M = { id: Date.now(), revive: s.revive !== false, qm: s.qm !== false, sw: s.sw !== false, phase: 'wait', waitT: 0, countT: 0, timeLeft: s.minutes * 60, score: [0, 0], target: s.target, diff: s.diff, minutes: s.minutes,
           ents: [], byEid: {}, ev: [], humans: [], reason: '', teamSize: s.teamSize, results: null,
           crates: (world.crateSpots || []).map(function (c) { return { x: c.x, z: c.z }; }) };
     M.crateClock = ES.crateClock(M.crates.length);
@@ -361,7 +363,7 @@
 
     const list = M.ents.map(function (e) { return { eid: e.eid, name: e.name, team: e.team, bot: !e.human, boss: !!e.boss, sk: e.p && e.p.sk ? e.p.sk : 'h0:n0' }; });
     M.humans.forEach(function (e) {
-      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : (M.boss ? 'boss' : 'normal')), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', rv: M.revive ? REVIVE_WAIT : 0, qm: M.qm ? 1 : 0, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
+      ES.room.send(e.p, { t: 'start', you: e.eid, team: e.team, ents: list, target: s.target, minutes: M.rb ? rbc.minutes : s.minutes, mode: M.rb ? 'rb' : (M.ctf ? 'ctf' : (M.boss ? 'boss' : 'normal')), rounds: rbc.rounds, rtime: rbc.minutes, gfx: s.gfx || '', map: world.map, topics: s.topics, names: s.names === 'all' ? 'all' : 'team', rv: M.revive ? REVIVE_WAIT : 0, qm: M.qm ? 1 : 0, sw: M.sw ? 1 : 0, x: r2(e.x), z: r2(e.z), yaw: r2(e.yaw) });
     });
     ES.room.setPhase('match');
     lastNow = performance.now(); snapT = 0; updT = 0;
@@ -494,6 +496,7 @@
   ES.room.on('st', onState);
   ES.room.on('shot', onShot);
   ES.room.on('earn', onEarn);
+  ES.room.on('sw', function (p, m) { const e = p.ent; if (e) e.sw = (typeof m.id === 'string' && ES.SPECIAL_IDS.indexOf(m.id) >= 0) ? m.id : ''; });   // which special weapon this student carries
   ES.room.on('rb', onRb);
   ES.room.on('rv', onRevive);
   ES.room.on('qm', onQm);
