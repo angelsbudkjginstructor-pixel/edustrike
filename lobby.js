@@ -74,16 +74,41 @@
      and fades out as soon as the match starts, the student leaves, or the room closes.
      It streams from one <audio> element (nothing big is kept in memory) and the file is only downloaded when a student reaches this screen.
      SAFETY CHECKS: every step is in try/catch; if the browser blocks sound or the file is missing, the screen simply stays quiet. */
-  let song = null, songBad = false;                                                          // songBad: the file could not load, so stay quiet
+  let song = null, songBad = false;                                                          // songBad: too many files failed, so stay quiet
+  let order = [], pos = 0, failed = 0;                                                       // order = shuffled playlist, pos = which song now
   function songLevel() { const s = ES.settings || {}; return s.music === false ? 0 : Math.max(0, Math.min(1, (s.musicVol === undefined ? 0.6 : s.musicVol))) * 0.7; }
+  /* The playlist: config lobbyList, or the single old "lobby" file if no list is given. */
+  function tracks() {
+    const m = ES.MUSIC_FILES || {};
+    if (m.lobbyList && m.lobbyList.length) return m.lobbyList;
+    return m.lobby ? [{ file: m.lobby, credit: '' }] : [];
+  }
+  function shuffle(n) {                                                                       // random order, and never the same song twice in a row
+    const a = []; for (let i = 0; i < n; i++) a.push(i);
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    if (n > 1 && order.length && a[0] === order[order.length - 1]) { const t = a[0]; a[0] = a[1]; a[1] = t; }
+    return a;
+  }
+  function showCredit(t) { const c = $('room-credit'); if (c && t && t.credit) c.textContent = t.credit; }
+  function startTrack() {                                                                     // opens the next song in the shuffled list
+    const list = tracks(); if (!list.length) { songBad = true; return; }
+    if (pos >= order.length) { order = shuffle(list.length); pos = 0; }
+    const t = list[order[pos]]; showCredit(t);
+    const el = song = new Audio(t.file); el.preload = 'auto'; el.volume = 0;
+    el.addEventListener('ended', function () {                                                // song finished: free it and go to the next one
+      if (song !== el) return;
+      pos++; failed = 0; el.removeAttribute('src'); el.load(); song = null;
+    });
+    el.addEventListener('error', function () {                                                // a file is missing: skip it, give up only if all fail
+      if (song !== el) return;
+      failed++; pos++; song = null;
+      if (failed >= list.length) songBad = true;
+    });
+  }
   function songSync() {
     try {
-      const file = (ES.MUSIC_FILES || {}).lobby;
-      const want = !!file && songLevel() > 0 && document.body.dataset.screen === 'room' && !$('room-wait').classList.contains('hidden') && !document.hidden;
-      if (want && !song && !songBad) {
-        const el = song = new Audio(file); el.loop = true; el.preload = 'auto'; el.volume = 0;
-        el.addEventListener('error', function () { if (song === el) { songBad = true; song = null; } });      // (only a real load failure counts, not our own clean-up)
-      }
+      const want = tracks().length > 0 && songLevel() > 0 && document.body.dataset.screen === 'room' && !$('room-wait').classList.contains('hidden') && !document.hidden;
+      if (want && !song && !songBad) startTrack();
       if (!song) return;
       if (want) {
         if (song.paused) { const p = song.play(); if (p && p.catch) p.catch(function () { /* browser wants a click first: it will start after the next sync */ }); }

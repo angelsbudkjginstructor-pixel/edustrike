@@ -210,3 +210,7 @@ The whole class (or you and your bot friends) is ONE team against a giant robot 
 - **Class season:** match points add up per student name on the teacher's computer (5 for playing + 3 per right answer + 4 per friend revived + 1 per tag + 10 if your team won). Buttons: Rename, New season (asks first), Copy table (paste into Google Sheets / Excel).
 - A finished match is added to the season once, even if the board is opened many times. Nothing leaves the teacher's computer.
 - Files: `js/season.js` (storage + ranking), `js/match.js` (points + awards), `js/teacher-room.js` (board screen).
+
+
+### Waiting-room playlist
+The student "Pick your team" screen plays 4 songs in random order and repeats (music-lobby.mp3 to music-lobby4.mp3, about 3.7 MB in total, each file is only downloaded when it is about to play). The list and the on-screen credit for each song are in `ES.MUSIC_FILES.lobbyList` (config.js). Add a song = upload an mp3 and add one line there.

@@ -37,6 +37,14 @@
   ES.MUSIC_FILES = {
     play: 'music-thriller.mp3', gain: 1.0,
     lobby: 'music-lobby.mp3',       // plays on the student waiting screen ("Pick your team") until the teacher presses START
+    /* Waiting-room playlist: songs play in random order and repeat. Each entry = file + the credit line shown on screen.
+       To add a song: upload the mp3, then add a line here. Delete the whole lobbyList line to go back to the single song above. */
+    lobbyList: [
+      { file: 'music-lobby.mp3',  credit: '🎵 Music: “Born to Win” by Aylex · Music provided by Free To Use (freetouse.com)' },
+      { file: 'music-lobby2.mp3', credit: '🎵 Music: “Sword 8” by its_tigri · via Pixabay' },
+      { file: 'music-lobby3.mp3', credit: '🎵 Music: “Dark Trap Beat – The Trick of Trap” by Alex Kizenkov · via Pixabay' },
+      { file: 'music-lobby4.mp3', credit: '🎵 Music: “Cyberpunk Trailer” by ArctSound · via Pixabay' }
+    ],
     /* Want a different song for a map? Upload the mp3 and write its name here, for example:  space: 'music-space.mp3'
        Maps with no file of their own play the normal song at a slightly different speed (see rate below). */
     byMap: { park: 'music-park.mp3', castle: 'music-castle.mp3', rooftops: 'music-rooftops.mp3', jungle: 'music-jungle.mp3', space: 'music-space.mp3',
