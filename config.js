@@ -32,7 +32,7 @@
   };
   /* Music files. play = the music while a match is running (if the file is missing the game makes its own music). */
   /* Saved progress (XP, levels, badges). Paste the web-app link of the Progress script here ONCE (see apps-script/Progress.gs). Empty = progress is saved only on each computer. */
-  ES.PROGRESS = { url: '' };
+  ES.PROGRESS = { url: 'https://script.google.com/macros/s/AKfycbypdfupGYE4MDjaZ8WZLAaXexZiwHGAmey_1EzF_qgcX0yP0tWcqOP10KbZBEFHoHz-5A/exec' };
 
   ES.MUSIC_FILES = {
     play: 'music-thriller.mp3', gain: 1.0,
